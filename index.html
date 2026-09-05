@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>QuoteFlow - Professional Quotations & Invoices</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #f8fafc; /* Slate 50 */
+            color: #0f172a; /* Slate 900 */
+        }
+
+        /* Hide scrollbar for cleaner UI but allow scrolling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Print Specific Styles */
+        @media print {
+            @page {
+                size: A4;
+                margin: 15mm;
+            }
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                padding: 0;
+                margin: 0;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-container {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                background: transparent !important;
+            }
+            .avoid-break {
+                page-break-inside: avoid;
+            }
+            .page-break-before {
+                page-break-before: always;
+            }
+        }
+
+        /* Mobile Bottom Nav Safe Area */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .mb-safe { margin-bottom: env(safe-area-inset-bottom, 20px); }
+        .bottom-safe { bottom: env(safe-area-inset-bottom, 20px); }
+        
+        /* Smooth transitions */
+        .transition-all-fast { transition: all 0.2s ease-in-out; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- UTILITIES & CONSTANTS ---
+        const STORAGE_KEY = 'quoteflow_data_v1';
+        
+        const INITIAL_STATE = {
+            profile: {
+                businessName: '',
+                regNumber: '',
+                address: '',
+                phone: '',
+                email: '',
+                website: '',
+                bankName: '',
+                accountName: '',
+                accountNumber: '',
+                logoBase64: null
+            },
+            customers: [],
+            quotations: [],
+            invoices: [],
+            counters: { qt: 1, inv: 1 }
+        };
+
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+        const formatCurrency = (amount) => `RM ${parseFloat(amount || 0).toFixed(2)}`;
+        const formatDate = (dateString) => {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
+        };
+        const generateDocNumber = (prefix, count) => `${prefix}-${count.toString().padStart(4, '0')}`;
+
+        // --- COMPONENTS ---
+
+        // Logo Component (CSS Only as requested)
+        const AppLogo = ({ className = "" }) => (
+            <div className={`flex items-center gap-2 ${className}`}>
+                <div className="bg-blue-600 text-white font-bold rounded-lg w-8 h-8 flex items-center justify-center text-sm shadow-sm select-none">
+                    QF
+                </div>
+                <span className="font-bold text-slate-800 tracking-tight text-lg select-none">QuoteFlow</span>
+            </div>
+        );
+
+        // UI Components
+        const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
+            const baseStyle = "inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all-fast focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+            const variants = {
+                primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm focus:ring-blue-500",
+                secondary: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-sm focus:ring-blue-500",
+                danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm focus:ring-red-500",
+                ghost: "bg-transparent hover:bg-gray-100 text-gray-700 focus:ring-gray-500"
+            };
+            return (
+                <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+                    {children}
+                </button>
+            );
+        };
+
+        const Input = ({ label, type = 'text', value, onChange, required, placeholder, className = '', min, step }) => (
+            <div className={`flex flex-col gap-1.5 ${className}`}>
+                {label && <label className="text-sm font-medium text-gray-700">{label} {required && <span className="text-red-500">*</span>}</label>}
+                <input
+                    type={type} value={value} onChange={onChange} required={required} placeholder={placeholder} min={min} step={step}
+                    className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm w-full bg-white"
+                />
+            </div>
+        );
+
+        const Textarea = ({ label, value, onChange, rows = 3, placeholder, className = '' }) => (
+            <div className={`flex flex-col gap-1.5 ${className}`}>
+                {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+                <textarea
+                    value={value} onChange={onChange} rows={rows} placeholder={placeholder}
+                    className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm w-full bg-white resize-y"
+                />
+            </div>
+        );
+
+        const StatusBadge = ({ status, type = 'qt' }) => {
+            const styles = {
+                'Draft': 'bg-gray-100 text-gray-800',
+                'Sent': 'bg-blue-100 text-blue-800',
+                'Accepted': 'bg-green-100 text-green-800',
+                'Rejected': 'bg-red-100 text-red-800',
+                'Expired': 'bg-yellow-100 text-yellow-800',
+                'Unpaid': 'bg-yellow-100 text-yellow-800',
+                'Paid': 'bg-green-100 text-green-800',
+                'Overdue': 'bg-red-100 text-red-800',
+                'Cancelled': 'bg-gray-200 text-gray-600'
+            };
+            return (
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100'}`}>
+                    {status}
+                </span>
+            );
+        };
+
+        // Modal Component
+        const Modal = ({ isOpen, onClose, title, children, footer }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-50 overflow-y-auto no-print">
+                    <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div className="fixed inset-0 transition-opacity bg-gray-900 bg-opacity-50" onClick={onClose} aria-hidden="true"></div>
+                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                        <div className="inline-block w-full max-w-lg p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-medium leading-6 text-gray-900">{title}</h3>
+                                <button onClick={onClose} className="text-gray-400 hover:text-gray-500 focus:outline-none">
+                                    <i className="fa-solid fa-times text-lg"></i>
+                                </button>
+                            </div>
+                            <div className="mt-2">{children}</div>
+                            {footer && <div className="mt-6 flex justify-end gap-3">{footer}</div>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Toast Notification System
+        let toastTimeout;
+        const Toast = ({ message, type = 'success', onClose }) => {
+            useEffect(() => {
+                toastTimeout = setTimeout(() => onClose(), 3000);
+                return () => clearTimeout(toastTimeout);
+            }, [message, onClose]);
+
+            if (!message) return null;
+            
+            const bg = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+            const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+
+            return (
+                <div className="fixed bottom-24 md:bottom-10 left-1/2 transform -translate-x-1/2 z-[60] no-print animate-fade-in-up">
+                    <div className={`${bg} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 text-sm font-medium`}>
+                        <i className={`fa-solid ${icon}`}></i>
+                        <span>{message}</span>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- VIEWS ---
+
+        const Dashboard = ({ data, setView, setActiveItem }) => {
+            const totalQuotations = data.quotations.length;
+            const sentQuotations = data.quotations.filter(q => q.status === 'Sent').length;
+            const acceptedQuotations = data.quotations.filter(q => q.status === 'Accepted').length;
+            
+            const totalQuoted = data.quotations.reduce((sum, q) => sum + (parseFloat(q.grandTotal) || 0), 0);
+
+            const recentQuotations = [...data.quotations].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+
+            return (
+                <div className="p-4 md:p-8 max-w-6xl mx-auto animate-fade-in">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+                            <p className="text-gray-500 text-sm mt-1">Manage your quotations, invoices and customers in one place.</p>
+                        </div>
+                        <Button onClick={() => setView('quote-form')} className="w-full md:w-auto">
+                            <i className="fa-solid fa-plus mr-2"></i> Create Quotation
+                        </Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        {[
+                            { label: 'TOTAL QUOTATIONS', value: totalQuotations, icon: 'fa-file-lines', color: 'text-blue-500' },
+                            { label: 'SENT', value: sentQuotations, icon: 'fa-paper-plane', color: 'text-yellow-500' },
+                            { label: 'ACCEPTED', value: acceptedQuotations, icon: 'fa-check-circle', color: 'text-green-500' },
+                            { label: 'TOTAL QUOTED', value: formatCurrency(totalQuoted), icon: 'fa-coins', color: 'text-purple-500' }
+                        ].map((stat, i) => (
+                            <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <i className={`fa-solid ${stat.icon} ${stat.color} opacity-80`}></i>
+                                    <span className="text-xs font-semibold text-gray-500 tracking-wider">{stat.label}</span>
+                                </div>
+                                <span className="text-xl md:text-2xl font-bold text-gray-900">{stat.value}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                            <h2 className="text-lg font-semibold text-gray-900">Recent Quotations</h2>
+                            {recentQuotations.length > 0 && (
+                                <button onClick={() => setView('quotations')} className="text-sm text-blue-600 hover:text-blue-800 font-medium">View All</button>
+                            )}
+                        </div>
+                        
+                        {recentQuotations.length === 0 ? (
+                            <div className="p-12 text-center flex flex-col items-center justify-center">
+                                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                                    <i className="fa-regular fa-folder-open text-3xl text-gray-400"></i>
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900">No quotations yet</h3>
+                                <p className="text-gray-500 text-sm mt-1 mb-6">Create your first quotation to get started.</p>
+                                <Button onClick={() => setView('quote-form')}>Create Quotation</Button>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Number</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {recentQuotations.map((q) => {
+                                            const customer = data.customers.find(c => c.id === q.customerId);
+                                            return (
+                                                <tr key={q.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => { setActiveItem(q); setView('quote-preview'); }}>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{q.docNumber}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{customer?.name || 'Unknown'}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(q.date)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{formatCurrency(q.grandTotal)}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={q.status} /></td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const BusinessProfile = ({ profile, updateData, showToast }) => {
+            const [localProfile, setLocalProfile] = useState({ ...profile });
+            const fileInputRef = useRef(null);
+
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setLocalProfile(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                updateData('profile', localProfile);
+                showToast('Business Profile saved successfully');
+            };
+
+            const handleLogoUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                    showToast('Invalid file format. Please upload JPG, PNG, or WEBP.', 'error');
+                    return;
+                }
+                
+                if (file.size > 2 * 1024 * 1024) {
+                    showToast('File size must be less than 2MB.', 'error');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setLocalProfile(prev => ({ ...prev, logoBase64: reader.result }));
+                    showToast('Logo uploaded. Remember to save.');
+                };
+                reader.readAsDataURL(file);
+            };
+
+            return (
+                <div className="p-4 md:p-8 max-w-4xl mx-auto pb-24 md:pb-8 animate-fade-in">
+                    <h1 className="text-2xl font-bold text-gray-900 mb-6">Business Profile</h1>
+                    
+                    <form onSubmit={handleSave} className="space-y-6 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        {/* Logo Section */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Company Logo</label>
+                            <div className="flex items-center gap-6">
+                                <div className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden relative">
+                                    {localProfile.logoBase64 ? (
+                                        <img src={localProfile.logoBase64} alt="Company Logo" className="w-full h-full object-contain p-1" />
+                                    ) : (
+                                        <i className="fa-regular fa-image text-3xl text-gray-400"></i>
+                                    )}
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <input type="file" ref={fileInputRef} onChange={handleLogoUpload} accept="image/png, image/jpeg, image/webp" className="hidden" />
+                                    <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="text-sm py-1.5">
+                                        {localProfile.logoBase64 ? 'Change Logo' : 'Upload Logo'}
+                                    </Button>
+                                    {localProfile.logoBase64 && (
+                                        <Button variant="ghost" onClick={() => setLocalProfile(prev => ({ ...prev, logoBase64: null }))} className="text-sm py-1.5 text-red-600 hover:text-red-700 hover:bg-red-50">
+                                            Remove
+                                        </Button>
+                                    )}
+                                    <p className="text-xs text-gray-500 mt-1">PNG, JPG, WEBP up to 2MB</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr className="border-gray-100" />
+
+                        {/* General Info */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input label="Business / Company Name" name="businessName" value={localProfile.businessName} onChange={handleChange} required />
+                            <Input label="Registration Number (Optional)" name="regNumber" value={localProfile.regNumber} onChange={handleChange} />
+                            <div className="md:col-span-2">
+                                <Textarea label="Business Address" name="address" value={localProfile.address} onChange={handleChange} />
+                            </div>
+                            <Input label="Phone Number" name="phone" value={localProfile.phone} onChange={handleChange} />
+                            <Input label="Email Address" name="email" type="email" value={localProfile.email} onChange={handleChange} />
+                            <Input label="Website (Optional)" name="website" type="url" value={localProfile.website} onChange={handleChange} className="md:col-span-2" placeholder="https://" />
+                        </div>
+
+                        <hr className="border-gray-100" />
+
+                        {/* Bank Details */}
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">Bank Details</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input label="Bank Name" name="bankName" value={localProfile.bankName} onChange={handleChange} placeholder="e.g. Maybank, CIMB" />
+                            <Input label="Account Name" name="accountName" value={localProfile.accountName} onChange={handleChange} />
+                            <Input label="Account Number" name="accountNumber" value={localProfile.accountNumber} onChange={handleChange} />
+                        </div>
+
+                        <div className="pt-4 flex justify-end">
+                            <Button type="submit">Save Profile</Button>
+                        </div>
+                    </form>
+                </div>
+            );
+        };
+
+        const Customers = ({ data, updateData, showToast }) => {
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingCustomer, setEditingCustomer] = useState(null);
+            const [deleteConfirm, setDeleteConfirm] = useState(null);
+            const [searchQuery, setSearchQuery] = useState('');
+
+            const [formData, setFormData] = useState({ name: '', company: '', phone: '', email: '', address: '' });
+
+            const filteredCustomers = data.customers.filter(c => 
+                c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                (c.company && c.company.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+
+            const handleOpenModal = (customer = null) => {
+                if (customer) {
+                    setFormData(customer);
+                    setEditingCustomer(customer.id);
+                } else {
+                    setFormData({ name: '', company: '', phone: '', email: '', address: '' });
+                    setEditingCustomer(null);
+                }
+                setIsModalOpen(true);
+            };
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                let updatedCustomers;
+                if (editingCustomer) {
+                    updatedCustomers = data.customers.map(c => c.id === editingCustomer ? { ...formData, id: editingCustomer } : c);
+                    showToast('Customer updated');
+                } else {
+                    updatedCustomers = [{ ...formData, id: generateId() }, ...data.customers];
+                    showToast('Customer added');
+                }
+                updateData('customers', updatedCustomers);
+                setIsModalOpen(false);
+            };
+
+            const handleDelete = () => {
+                if (!deleteConfirm) return;
+                const updatedCustomers = data.customers.filter(c => c.id !== deleteConfirm);
+                updateData('customers', updatedCustomers);
+                showToast('Customer deleted');
+                setDeleteConfirm(null);
+            };
+
+            return (
+                <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
+                        <Button onClick={() => handleOpenModal()}>
+                            <i className="fa-solid fa-plus mr-2"></i> Add Customer
+                        </Button>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="p-4 border-b border-gray-100">
+                            <div className="relative max-w-md">
+                                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i className="fa-solid fa-search text-gray-400"></i>
+                                </span>
+                                <input 
+                                    type="text" placeholder="Search customers..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {data.customers.length === 0 ? (
+                            <div className="p-12 text-center">
+                                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <i className="fa-regular fa-user text-3xl text-gray-400"></i>
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900">No customers yet</h3>
+                                <p className="text-gray-500 text-sm mt-1 mb-6">Add your first customer to get started.</p>
+                                <Button onClick={() => handleOpenModal()}>Add Customer</Button>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {filteredCustomers.map(customer => (
+                                            <tr key={customer.id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm font-medium text-gray-900">{customer.name}</div>
+                                                    {customer.company && <div className="text-sm text-gray-500">{customer.company}</div>}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm text-gray-900">{customer.email}</div>
+                                                    <div className="text-sm text-gray-500">{customer.phone}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right text-sm font-medium">
+                                                    <button onClick={() => handleOpenModal(customer)} className="text-blue-600 hover:text-blue-900 mr-4">Edit</button>
+                                                    <button onClick={() => setDeleteConfirm(customer.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Customer Form Modal */}
+                    <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingCustomer ? 'Edit Customer' : 'Add Customer'}>
+                        <form id="customerForm" onSubmit={handleSave} className="space-y-4">
+                            <Input label="Customer Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
+                            <Input label="Company Name (Optional)" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="Phone Number" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                                <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                            </div>
+                            <Textarea label="Billing Address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                        </form>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                            <Button type="submit" form="customerForm">Save Customer</Button>
+                        </div>
+                    </Modal>
+
+                    {/* Delete Confirmation Modal */}
+                    <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Customer">
+                        <p className="text-sm text-gray-500">Are you sure you want to delete this customer? This action cannot be undone.</p>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+                            <Button variant="danger" onClick={handleDelete}>Delete</Button>
+                        </div>
+                    </Modal>
+                </div>
+            );
+        };
+
+        const DocumentForm = ({ type = 'qt', data, updateData, showToast, setView, activeItem = null }) => {
+            const isInvoice = type === 'inv';
+            const title = isInvoice ? 'Invoice' : 'Quotation';
+            const collectionName = isInvoice ? 'invoices' : 'quotations';
+            
+            const [docData, setDocData] = useState(() => {
+                if (activeItem) return { ...activeItem, date: activeItem.date || new Date().toISOString().split('T')[0] }; // Edit mode
+                
+                // New mode
+                return {
+                    id: generateId(),
+                    docNumber: 'Draft', // Will be generated on save
+                    date: new Date().toISOString().split('T')[0],
+                    validUntil: '',
+                    customerId: '',
+                    items: [{ id: generateId(), description: '', qty: 1, unit: 'Unit', price: 0, discount: 0, discountType: 'amount' }],
+                    taxPct: 0,
+                    notes: '',
+                    terms: '',
+                    status: 'Draft',
+                    isConversion: false
+                };
+            });
+
+            // Quick Add Customer Modal
+            const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+            const [newCustomer, setNewCustomer] = useState({ name: '', company: '', phone: '', email: '', address: '' });
+
+            // Calculations
+            const calculations = useMemo(() => {
+                let subtotal = 0;
+                let totalDiscount = 0;
+                
+                const processedItems = docData.items.map(item => {
+                    const qty = parseFloat(item.qty) || 0;
+                    const price = parseFloat(item.price) || 0;
+                    const rowGross = qty * price;
+                    
+                    let rowDiscountAmt = 0;
+                    if (item.discountType === 'percent') {
+                        rowDiscountAmt = rowGross * ((parseFloat(item.discount) || 0) / 100);
+                    } else {
+                        rowDiscountAmt = parseFloat(item.discount) || 0;
+                    }
+                    
+                    const rowTotal = Math.max(0, rowGross - rowDiscountAmt);
+                    
+                    subtotal += rowGross;
+                    totalDiscount += rowDiscountAmt;
+                    
+                    return { ...item, amount: rowTotal };
+                });
+
+                const taxableAmount = Math.max(0, subtotal - totalDiscount);
+                const taxAmt = taxableAmount * ((parseFloat(docData.taxPct) || 0) / 100);
+                const grandTotal = taxableAmount + taxAmt;
+
+                return { processedItems, subtotal, totalDiscount, taxAmt, grandTotal };
+            }, [docData.items, docData.taxPct]);
+
+            const handleItemChange = (index, field, value) => {
+                const newItems = [...docData.items];
+                newItems[index] = { ...newItems[index], [field]: value };
+                setDocData(prev => ({ ...prev, items: newItems }));
+            };
+
+            const addItem = () => {
+                setDocData(prev => ({
+                    ...prev,
+                    items: [...prev.items, { id: generateId(), description: '', qty: 1, unit: 'Unit', price: 0, discount: 0, discountType: 'amount' }]
+                }));
+            };
+
+            const removeItem = (index) => {
+                if (docData.items.length <= 1) return;
+                const newItems = docData.items.filter((_, i) => i !== index);
+                setDocData(prev => ({ ...prev, items: newItems }));
+            };
+
+            const handleSave = (isDraft = false) => {
+                if (!docData.customerId) { showToast('Please select a customer', 'error'); return; }
+                if (docData.items.some(i => !i.description.trim())) { showToast('All items must have a description', 'error'); return; }
+
+                let finalDocNumber = docData.docNumber;
+                let updatedCounters = { ...data.counters };
+
+                // Generate number if it's a new document (not an edit of an existing saved one)
+                if (docData.docNumber === 'Draft' || !docData.docNumber) {
+                    const prefix = isInvoice ? 'INV' : 'QT';
+                    const counterKey = isInvoice ? 'inv' : 'qt';
+                    finalDocNumber = generateDocNumber(prefix, updatedCounters[counterKey]);
+                    updatedCounters[counterKey] += 1;
+                }
+
+                const finalData = {
+                    ...docData,
+                    docNumber: finalDocNumber,
+                    items: calculations.processedItems,
+                    subtotal: calculations.subtotal,
+                    discount: calculations.totalDiscount,
+                    taxAmt: calculations.taxAmt,
+                    grandTotal: calculations.grandTotal,
+                    status: isDraft ? 'Draft' : (isInvoice ? 'Unpaid' : 'Sent')
+                };
+
+                let updatedCollection;
+                if (activeItem && activeItem.id && !docData.isConversion) {
+                    // Update existing
+                    updatedCollection = data[collectionName].map(doc => doc.id === finalData.id ? finalData : doc);
+                } else {
+                    // Create new
+                    updatedCollection = [finalData, ...data[collectionName]];
+                }
+
+                updateData(collectionName, updatedCollection);
+                updateData('counters', updatedCounters);
+                
+                showToast(`${title} saved successfully`);
+                setView(isInvoice ? 'invoices' : 'quotations');
+            };
+
+            const handleQuickAddCustomer = (e) => {
+                e.preventDefault();
+                if (!newCustomer.name) return;
+                const customer = { ...newCustomer, id: generateId() };
+                updateData('customers', [customer, ...data.customers]);
+                setDocData(prev => ({ ...prev, customerId: customer.id }));
+                setIsCustomerModalOpen(false);
+                setNewCustomer({ name: '', company: '', phone: '', email: '', address: '' });
+                showToast('Customer added & selected');
+            };
+
+            return (
+                <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 animate-fade-in relative z-10">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <div>
+                            <button onClick={() => setView(isInvoice ? 'invoices' : 'quotations')} className="text-sm text-gray-500 hover:text-gray-800 mb-1 flex items-center gap-1">
+                                <i className="fa-solid fa-arrow-left"></i> Back
+                            </button>
+                            <h1 className="text-2xl font-bold text-gray-900">
+                                {activeItem && !docData.isConversion ? `Edit ${title}` : `Create ${title}`} 
+                                <span className="text-gray-400 font-normal ml-2 text-lg">
+                                    {docData.docNumber !== 'Draft' ? `#${docData.docNumber}` : ''}
+                                </span>
+                            </h1>
+                        </div>
+                        <div className="flex gap-2 w-full md:w-auto">
+                            <Button variant="secondary" onClick={() => handleSave(true)} className="flex-1 md:flex-none">Save Draft</Button>
+                            <Button onClick={() => handleSave(false)} className="flex-1 md:flex-none">Save {title}</Button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Customer <span className="text-red-500">*</span></label>
+                                <div className="flex gap-2">
+                                    <select 
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                        value={docData.customerId} onChange={(e) => setDocData({...docData, customerId: e.target.value})}
+                                    >
+                                        <option value="">Select a customer...</option>
+                                        {data.customers.map(c => <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>)}
+                                    </select>
+                                    <Button variant="secondary" onClick={() => setIsCustomerModalOpen(true)} className="px-3" title="Add New Customer">
+                                        <i className="fa-solid fa-plus"></i>
+                                    </Button>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label={`${title} Date`} type="date" value={docData.date} onChange={(e) => setDocData({...docData, date: e.target.value})} required />
+                                <Input label={isInvoice ? "Due Date" : "Valid Until"} type="date" value={docData.validUntil} onChange={(e) => setDocData({...docData, validUntil: e.target.value})} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Items Table - Responsive handling */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible mb-6">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center rounded-t-xl">
+                            <h3 className="font-semibold text-gray-800">Items / Services</h3>
+                        </div>
+                        <div className="p-4 overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                <thead>
+                                    <tr className="border-b border-gray-200 text-sm text-gray-500">
+                                        <th className="pb-2 w-5/12 font-medium">Description</th>
+                                        <th className="pb-2 w-1/12 font-medium">Qty</th>
+                                        <th className="pb-2 w-1/12 font-medium">Unit</th>
+                                        <th className="pb-2 w-2/12 font-medium text-right">Price (RM)</th>
+                                        <th className="pb-2 w-2/12 font-medium text-right">Discount</th>
+                                        <th className="pb-2 w-1/12 font-medium text-right">Amount</th>
+                                        <th className="pb-2 w-8"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {docData.items.map((item, index) => (
+                                        <tr key={item.id} className="border-b border-gray-50 last:border-0 group">
+                                            <td className="py-3 pr-2 align-top">
+                                                <textarea 
+                                                    className="w-full px-2 py-1.5 border border-transparent group-hover:border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none outline-none text-sm bg-transparent group-hover:bg-white"
+                                                    rows="2" placeholder="Item description..." value={item.description} onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                                                />
+                                            </td>
+                                            <td className="py-3 pr-2 align-top">
+                                                <input type="number" min="0" step="0.01" className="w-full px-2 py-1.5 border border-transparent group-hover:border-gray-300 rounded outline-none text-sm" value={item.qty} onChange={(e) => handleItemChange(index, 'qty', e.target.value)} />
+                                            </td>
+                                            <td className="py-3 pr-2 align-top">
+                                                <select className="w-full px-2 py-1.5 border border-transparent group-hover:border-gray-300 rounded outline-none text-sm" value={item.unit} onChange={(e) => handleItemChange(index, 'unit', e.target.value)}>
+                                                    <option>Unit</option><option>Piece</option><option>Set</option><option>Hour</option><option>Day</option><option>Job</option><option>Lot</option>
+                                                </select>
+                                            </td>
+                                            <td className="py-3 pr-2 align-top text-right">
+                                                <input type="number" min="0" step="0.01" className="w-full px-2 py-1.5 border border-transparent group-hover:border-gray-300 rounded outline-none text-sm text-right" value={item.price} onChange={(e) => handleItemChange(index, 'price', e.target.value)} />
+                                            </td>
+                                            <td className="py-3 pr-2 align-top">
+                                                <div className="flex border border-transparent group-hover:border-gray-300 rounded overflow-hidden">
+                                                    <input type="number" min="0" step="0.01" className="w-full px-2 py-1.5 outline-none text-sm text-right min-w-[60px]" value={item.discount} onChange={(e) => handleItemChange(index, 'discount', e.target.value)} />
+                                                    <select className="bg-gray-50 border-l border-gray-300 text-xs px-1 outline-none cursor-pointer" value={item.discountType} onChange={(e) => handleItemChange(index, 'discountType', e.target.value)}>
+                                                        <option value="amount">RM</option>
+                                                        <option value="percent">%</option>
+                                                    </select>
+                                                </div>
+                                            </td>
+                                            <td className="py-3 pr-2 align-top text-right font-medium text-gray-700 pt-5">
+                                                {formatCurrency(calculations.processedItems[index].amount)}
+                                            </td>
+                                            <td className="py-3 align-top pt-4 text-center">
+                                                <button onClick={() => removeItem(index)} className="text-gray-400 hover:text-red-500 focus:outline-none" tabIndex="-1">
+                                                    <i className="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="p-4 border-t border-gray-100">
+                            <Button variant="ghost" onClick={addItem} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                                <i className="fa-solid fa-plus mr-2"></i> Add Line Item
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-6 mb-6">
+                        {/* Notes & Terms */}
+                        <div className="flex-1 space-y-4">
+                            <Textarea label="Notes" placeholder="Additional notes for the customer..." value={docData.notes} onChange={(e) => setDocData({...docData, notes: e.target.value})} />
+                            <Textarea label="Terms & Conditions" placeholder="Payment terms, delivery terms, etc..." value={docData.terms} onChange={(e) => setDocData({...docData, terms: e.target.value})} />
+                        </div>
+                        
+                        {/* Totals Calculation Box */}
+                        <div className="w-full md:w-80 bg-white rounded-xl shadow-sm border border-gray-100 p-6 self-start">
+                            <div className="space-y-3 text-sm">
+                                <div className="flex justify-between text-gray-600">
+                                    <span>Subtotal</span>
+                                    <span>{formatCurrency(calculations.subtotal)}</span>
+                                </div>
+                                {calculations.totalDiscount > 0 && (
+                                    <div className="flex justify-between text-red-500">
+                                        <span>Discount</span>
+                                        <span>-{formatCurrency(calculations.totalDiscount)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-gray-600">
+                                    <span className="flex items-center gap-2">
+                                        Tax / SST
+                                        <select className="border border-gray-300 rounded px-1 py-0.5 text-xs bg-white" value={docData.taxPct} onChange={(e) => setDocData({...docData, taxPct: e.target.value})}>
+                                            <option value="0">0%</option><option value="6">6%</option><option value="8">8%</option><option value="10">10%</option>
+                                        </select>
+                                    </span>
+                                    <span>{formatCurrency(calculations.taxAmt)}</span>
+                                </div>
+                                <hr className="border-gray-200 my-2" />
+                                <div className="flex justify-between items-center text-lg font-bold text-gray-900">
+                                    <span>Grand Total</span>
+                                    <span>{formatCurrency(calculations.grandTotal)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Customer Modal rendering inside Form */}
+                    <Modal isOpen={isCustomerModalOpen} onClose={() => setIsCustomerModalOpen(false)} title="Quick Add Customer">
+                        <form id="quickCustomerForm" onSubmit={handleQuickAddCustomer} className="space-y-4">
+                            <Input label="Customer Name" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} required />
+                            <Input label="Company Name (Optional)" value={newCustomer.company} onChange={e => setNewCustomer({...newCustomer, company: e.target.value})} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="Phone Number" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} />
+                                <Input label="Email" type="email" value={newCustomer.email} onChange={e => setNewCustomer({...newCustomer, email: e.target.value})} />
+                            </div>
+                        </form>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setIsCustomerModalOpen(false)}>Cancel</Button>
+                            <Button type="submit" form="quickCustomerForm">Add & Select</Button>
+                        </div>
+                    </Modal>
+                </div>
+            );
+        };
+
+        const DocumentList = ({ type = 'qt', data, setView, setActiveItem, updateData, showToast }) => {
+            const isInvoice = type === 'inv';
+            const title = isInvoice ? 'Invoices' : 'Quotations';
+            const collection = isInvoice ? data.invoices : data.quotations;
+            
+            const [searchQuery, setSearchQuery] = useState('');
+            const [statusFilter, setStatusFilter] = useState('All');
+            const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+            const statuses = isInvoice ? ['All', 'Draft', 'Unpaid', 'Paid', 'Overdue', 'Cancelled'] : ['All', 'Draft', 'Sent', 'Accepted', 'Rejected', 'Expired'];
+
+            const filteredDocs = collection.filter(doc => {
+                const customer = data.customers.find(c => c.id === doc.customerId);
+                const matchesSearch = doc.docNumber.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                      (customer && customer.name.toLowerCase().includes(searchQuery.toLowerCase()));
+                const matchesStatus = statusFilter === 'All' || doc.status === statusFilter;
+                return matchesSearch && matchesStatus;
+            }).sort((a, b) => new Date(b.date) - new Date(a.date)); // Newest first
+
+            const handleDelete = () => {
+                if (!deleteConfirm) return;
+                const collectionName = isInvoice ? 'invoices' : 'quotations';
+                const updated = data[collectionName].filter(d => d.id !== deleteConfirm);
+                updateData(collectionName, updated);
+                showToast(`${isInvoice ? 'Invoice' : 'Quotation'} deleted`);
+                setDeleteConfirm(null);
+            };
+
+            const handleRowClick = (doc) => {
+                setActiveItem(doc);
+                setView(isInvoice ? 'invoice-preview' : 'quote-preview');
+            };
+
+            return (
+                <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+                        <Button onClick={() => setView(isInvoice ? 'invoice-form' : 'quote-form')}>
+                            <i className="fa-solid fa-plus mr-2"></i> Create {isInvoice ? 'Invoice' : 'Quotation'}
+                        </Button>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+                        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4">
+                            <div className="relative flex-1">
+                                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i className="fa-solid fa-search text-gray-400"></i>
+                                </span>
+                                <input 
+                                    type="text" placeholder="Search number or customer..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                />
+                            </div>
+                            <select 
+                                className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 sm:text-sm bg-white min-w-[150px]"
+                                value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+                            >
+                                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </div>
+
+                        {collection.length === 0 ? (
+                            <div className="p-12 text-center">
+                                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <i className={`fa-regular ${isInvoice ? 'fa-file-invoice' : 'fa-file-lines'} text-3xl text-gray-400`}></i>
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900">No {title.toLowerCase()} yet</h3>
+                                <p className="text-gray-500 text-sm mt-1 mb-6">Create your first {isInvoice ? 'invoice' : 'quotation'} to get started.</p>
+                                <Button onClick={() => setView(isInvoice ? 'invoice-form' : 'quote-form')}>Create {isInvoice ? 'Invoice' : 'Quotation'}</Button>
+                            </div>
+                        ) : filteredDocs.length === 0 ? (
+                            <div className="p-12 text-center text-gray-500">No results found matching your filters.</div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Number</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {filteredDocs.map(doc => {
+                                            const customer = data.customers.find(c => c.id === doc.customerId);
+                                            return (
+                                                <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600 cursor-pointer" onClick={() => handleRowClick(doc)}>
+                                                        {doc.docNumber}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 cursor-pointer" onClick={() => handleRowClick(doc)}>
+                                                        {customer?.name || 'Unknown'}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer" onClick={() => handleRowClick(doc)}>
+                                                        {formatDate(doc.date)}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium text-right cursor-pointer" onClick={() => handleRowClick(doc)}>
+                                                        {formatCurrency(doc.grandTotal)}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center cursor-pointer" onClick={() => handleRowClick(doc)}>
+                                                        <StatusBadge status={doc.status} />
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                        <div className="relative inline-block text-left group">
+                                                            <button className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100">
+                                                                <i className="fa-solid fa-ellipsis-vertical"></i>
+                                                            </button>
+                                                            {/* Simple dropdown simulation on hover for desktop, tap on mobile */}
+                                                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-20 hidden group-hover:block hover:block">
+                                                                <div className="py-1">
+                                                                    <button onClick={() => handleRowClick(doc)} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">View / Print</button>
+                                                                    <button onClick={() => { setActiveItem(doc); setView(isInvoice ? 'invoice-form' : 'quote-form'); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Edit</button>
+                                                                    <button onClick={() => setDeleteConfirm(doc.id)} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Delete</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title={`Delete ${isInvoice ? 'Invoice' : 'Quotation'}`}>
+                        <p className="text-sm text-gray-500">Are you sure you want to delete this document? This action cannot be undone.</p>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+                            <Button variant="danger" onClick={handleDelete}>Delete</Button>
+                        </div>
+                    </Modal>
+                </div>
+            );
+        };
+
+        const DocumentPreview = ({ type = 'qt', doc, data, setView, setActiveItem, updateData, showToast }) => {
+            const isInvoice = type === 'inv';
+            const title = isInvoice ? 'INVOICE' : 'QUOTATION';
+            const collectionName = isInvoice ? 'invoices' : 'quotations';
+            
+            const customer = data.customers.find(c => c.id === doc.customerId);
+            const profile = data.profile;
+
+            const handlePrint = () => {
+                window.print();
+            };
+
+            const handleStatusChange = (newStatus) => {
+                const updatedDoc = { ...doc, status: newStatus };
+                const updatedCollection = data[collectionName].map(d => d.id === doc.id ? updatedDoc : d);
+                updateData(collectionName, updatedCollection);
+                setActiveItem(updatedDoc);
+                showToast(`Status updated to ${newStatus}`);
+            };
+
+            const handleConvertToInvoice = () => {
+                const newInvoiceData = {
+                    ...doc,
+                    isConversion: true, // Flag to indicate we are creating new from existing
+                    id: generateId(),
+                    docNumber: 'Draft', // Will trigger generation on save
+                    date: new Date().toISOString().split('T')[0],
+                    validUntil: '', // Reset date
+                    status: 'Draft'
+                };
+                setActiveItem(newInvoiceData);
+                setView('invoice-form');
+            };
+
+            const handleDuplicate = () => {
+                const duplicateData = {
+                    ...doc,
+                    isConversion: true,
+                    id: generateId(),
+                    docNumber: 'Draft',
+                    date: new Date().toISOString().split('T')[0],
+                    status: 'Draft'
+                };
+                setActiveItem(duplicateData);
+                setView(isInvoice ? 'invoice-form' : 'quote-form');
+            };
+
+            if (!doc) return <div>Document not found</div>;
+
+            return (
+                <div className="bg-gray-100 min-h-screen pb-32 print-container">
+                    {/* Action Bar (Hidden on Print) */}
+                    <div className="bg-white border-b border-gray-200 sticky top-0 z-40 no-print shadow-sm">
+                        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-4 w-full sm:w-auto">
+                                <button onClick={() => setView(isInvoice ? 'invoices' : 'quotations')} className="text-gray-500 hover:text-gray-800 p-2 rounded-full hover:bg-gray-100">
+                                    <i className="fa-solid fa-arrow-left"></i>
+                                </button>
+                                <div>
+                                    <h2 className="text-lg font-bold text-gray-900">{doc.docNumber}</h2>
+                                    <div className="flex items-center gap-2">
+                                        <StatusBadge status={doc.status} />
+                                        <span className="text-xs text-gray-500">{customer?.name}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                                <select 
+                                    className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium bg-white"
+                                    value={doc.status} onChange={(e) => handleStatusChange(e.target.value)}
+                                >
+                                    {(isInvoice ? ['Draft', 'Unpaid', 'Paid', 'Overdue', 'Cancelled'] : ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired']).map(s => (
+                                        <option key={s} value={s}>Mark as {s}</option>
+                                    ))}
+                                </select>
+                                
+                                {!isInvoice && doc.status === 'Accepted' && (
+                                    <Button onClick={handleConvertToInvoice} className="bg-green-600 hover:bg-green-700">
+                                        <i className="fa-solid fa-file-invoice mr-2"></i> Convert to Invoice
+                                    </Button>
+                                )}
+                                
+                                <Button variant="secondary" onClick={() => { setActiveItem(doc); setView(isInvoice ? 'invoice-form' : 'quote-form'); }}>
+                                    <i className="fa-solid fa-pen"></i> <span className="hidden sm:inline ml-2">Edit</span>
+                                </Button>
+                                <Button variant="secondary" onClick={handleDuplicate} title="Duplicate">
+                                    <i className="fa-regular fa-copy"></i>
+                                </Button>
+                                <Button onClick={handlePrint}>
+                                    <i className="fa-solid fa-print"></i> <span className="hidden sm:inline ml-2">Print / PDF</span>
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Document A4 Container */}
+                    <div className="max-w-[210mm] mx-auto bg-white sm:my-8 sm:shadow-lg p-8 sm:p-12 print:p-0 print:shadow-none print:m-0 w-full min-h-[297mm] text-gray-800 text-[13px] relative z-10">
+                        
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-10 avoid-break">
+                            <div className="w-1/2">
+                                {profile.logoBase64 && (
+                                    <img src={profile.logoBase64} alt="Company Logo" className="max-h-24 max-w-xs mb-4 object-contain" />
+                                )}
+                                <h1 className="text-xl font-bold text-gray-900 mb-1">{profile.businessName || 'Your Business Name'}</h1>
+                                {profile.regNumber && <p className="text-gray-600 mb-1">Reg No: {profile.regNumber}</p>}
+                                <p className="text-gray-600 whitespace-pre-wrap leading-relaxed">{profile.address}</p>
+                                <p className="text-gray-600 mt-1">
+                                    {profile.phone && <span>Tel: {profile.phone} </span>}
+                                    {profile.email && <span> | Email: {profile.email}</span>}
+                                    {profile.website && <span className="block">{profile.website}</span>}
+                                </p>
+                            </div>
+                            <div className="text-right w-1/2">
+                                <h2 className="text-4xl font-bold text-gray-900 tracking-wider mb-4 uppercase">{title}</h2>
+                                <table className="ml-auto text-sm text-left">
+                                    <tbody>
+                                        <tr><td className="py-1 pr-4 font-semibold text-gray-600">{title} No:</td><td className="py-1 font-bold">{doc.docNumber}</td></tr>
+                                        <tr><td className="py-1 pr-4 font-semibold text-gray-600">Date:</td><td className="py-1">{formatDate(doc.date)}</td></tr>
+                                        {doc.validUntil && (
+                                            <tr>
+                                                <td className="py-1 pr-4 font-semibold text-gray-600">{isInvoice ? 'Due Date:' : 'Valid Until:'}</td>
+                                                <td className="py-1">{formatDate(doc.validUntil)}</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Bill To */}
+                        <div className="mb-10 avoid-break">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase border-b border-gray-900 pb-1 mb-3 inline-block">Bill To</h3>
+                            {customer ? (
+                                <div>
+                                    <p className="font-bold text-base text-gray-900">{customer.name}</p>
+                                    {customer.company && <p className="font-semibold">{customer.company}</p>}
+                                    <p className="whitespace-pre-wrap mt-1 text-gray-600">{customer.address}</p>
+                                    <p className="mt-1 text-gray-600">
+                                        {customer.phone && <span>Tel: {customer.phone} </span>}
+                                        {customer.email && <span>| {customer.email}</span>}
+                                    </p>
+                                </div>
+                            ) : (
+                                <p className="text-gray-400 italic">Customer details missing</p>
+                            )}
+                        </div>
+
+                        {/* Items Table */}
+                        <table className="w-full text-left mb-8 border-collapse">
+                            <thead>
+                                <tr className="border-b-2 border-gray-900 text-sm">
+                                    <th className="py-2 font-bold uppercase w-12 text-center">No.</th>
+                                    <th className="py-2 font-bold uppercase">Description</th>
+                                    <th className="py-2 font-bold uppercase text-center w-16">Qty</th>
+                                    <th className="py-2 font-bold uppercase text-right w-24">Price (RM)</th>
+                                    {doc.discount > 0 && <th className="py-2 font-bold uppercase text-right w-24">Disc</th>}
+                                    <th className="py-2 font-bold uppercase text-right w-28">Amount (RM)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {doc.items.map((item, idx) => (
+                                    <tr key={idx} className="border-b border-gray-200 avoid-break">
+                                        <td className="py-3 text-center align-top text-gray-500">{idx + 1}</td>
+                                        <td className="py-3 align-top whitespace-pre-wrap pr-4 text-gray-800">{item.description}</td>
+                                        <td className="py-3 text-center align-top text-gray-800">{item.qty} {item.unit !== 'Unit' ? <span className="text-xs text-gray-500 block">{item.unit}</span> : ''}</td>
+                                        <td className="py-3 text-right align-top text-gray-800">{parseFloat(item.price).toFixed(2)}</td>
+                                        {doc.discount > 0 && <td className="py-3 text-right align-top text-gray-500">{item.discount > 0 ? (item.discountType === 'percent' ? `${item.discount}%` : parseFloat(item.discount).toFixed(2)) : '-'}</td>}
+                                        <td className="py-3 text-right align-top font-medium text-gray-900">{parseFloat(item.amount).toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+
+                        {/* Totals Section */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start avoid-break mb-12">
+                            {/* Notes/Terms - Left side */}
+                            <div className="w-full sm:w-1/2 pr-8 mb-6 sm:mb-0">
+                                {doc.notes && (
+                                    <div className="mb-4">
+                                        <h4 className="font-bold text-gray-900 text-sm uppercase mb-1">Notes</h4>
+                                        <p className="text-gray-600 whitespace-pre-wrap text-sm">{doc.notes}</p>
+                                    </div>
+                                )}
+                                {doc.terms && (
+                                    <div>
+                                        <h4 className="font-bold text-gray-900 text-sm uppercase mb-1">Terms & Conditions</h4>
+                                        <p className="text-gray-600 whitespace-pre-wrap text-xs">{doc.terms}</p>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Calculations - Right side */}
+                            <div className="w-full sm:w-80 ml-auto">
+                                <table className="w-full text-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td className="py-1.5 font-semibold text-gray-600">Subtotal</td>
+                                            <td className="py-1.5 text-right text-gray-800">{parseFloat(doc.subtotal).toFixed(2)}</td>
+                                        </tr>
+                                        {doc.discount > 0 && (
+                                            <tr>
+                                                <td className="py-1.5 font-semibold text-gray-600">Discount</td>
+                                                <td className="py-1.5 text-right text-red-600">-{parseFloat(doc.discount).toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        {doc.taxPct > 0 && (
+                                            <tr>
+                                                <td className="py-1.5 font-semibold text-gray-600">Tax / SST ({doc.taxPct}%)</td>
+                                                <td className="py-1.5 text-right text-gray-800">{parseFloat(doc.taxAmt).toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        <tr className="border-t-2 border-gray-900">
+                                            <td className="py-3 font-bold text-base text-gray-900 uppercase">Grand Total</td>
+                                            <td className="py-3 text-right font-bold text-lg text-gray-900">RM {parseFloat(doc.grandTotal).toFixed(2)}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Footer / Bank / Signatures */}
+                        <div className="mt-auto avoid-break">
+                            <div className="flex flex-col sm:flex-row justify-between border-t border-gray-200 pt-8 mt-8">
+                                {/* Payment Info */}
+                                <div className="w-full sm:w-1/2 pr-4 mb-8 sm:mb-0">
+                                    <h4 className="font-bold text-gray-900 text-sm uppercase mb-2">Payment Details</h4>
+                                    {profile.bankName || profile.accountName || profile.accountNumber ? (
+                                        <div className="text-gray-700 text-sm">
+                                            {profile.bankName && <p><span className="font-semibold text-gray-500 w-24 inline-block">Bank:</span> {profile.bankName}</p>}
+                                            {profile.accountName && <p><span className="font-semibold text-gray-500 w-24 inline-block">Account Name:</span> {profile.accountName}</p>}
+                                            {profile.accountNumber && <p><span className="font-semibold text-gray-500 w-24 inline-block">Account No:</span> <span className="font-mono text-base">{profile.accountNumber}</span></p>}
+                                        </div>
+                                    ) : (
+                                        <p className="text-gray-400 italic text-sm">No bank details provided in profile.</p>
+                                    )}
+                                </div>
+
+                                {/* Signatures */}
+                                <div className="w-full sm:w-1/2 flex justify-end gap-12 text-sm text-center">
+                                    {/* Company Signature */}
+                                    <div className="w-40 flex flex-col items-center">
+                                        <div className="h-20 border-b border-gray-400 w-full mb-2"></div>
+                                        <p className="font-bold text-gray-900">{profile.businessName || 'Company'}</p>
+                                        <p className="text-gray-500 text-xs mt-1">Authorized Signature</p>
+                                    </div>
+                                    
+                                    {/* Customer Acceptance (Only for Quotations) */}
+                                    {!isInvoice && (
+                                        <div className="w-40 flex flex-col items-center">
+                                            <div className="h-20 border-b border-gray-400 w-full mb-2"></div>
+                                            <p className="font-bold text-gray-900">{customer?.name || 'Customer'}</p>
+                                            <p className="text-gray-500 text-xs mt-1">Accepted & Signed</p>
+                                            <p className="text-gray-500 text-xs mt-1 border-t border-gray-200 pt-1 w-full text-left">Date:</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('dashboard');
+            const [data, setData] = useState(INITIAL_STATE);
+            const [activeItem, setActiveItem] = useState(null); // For editing/previewing
+            const [toastMessage, setToastMessage] = useState('');
+            const [toastType, setToastType] = useState('success');
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+            // Load from LocalStorage
+            useEffect(() => {
+                const storedData = localStorage.getItem(STORAGE_KEY);
+                if (storedData) {
+                    try {
+                        setData(JSON.parse(storedData));
+                    } catch (e) {
+                        console.error("Failed to parse stored data", e);
+                    }
+                }
+            }, []);
+
+            // Helper to update specific slice of data and persist
+            const updateData = (key, value) => {
+                setData(prev => {
+                    const newData = { ...prev, [key]: value };
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+                    return newData;
+                });
+            };
+
+            const showToast = (msg, type = 'success') => {
+                setToastMessage(msg);
+                setToastType(type);
+            };
+
+            const navigate = (newView) => {
+                setView(newView);
+                setActiveItem(null); // Reset active item on main navigation
+                setIsMobileMenuOpen(false);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            // Mobile Navigation Items
+            const navItems = [
+                { id: 'dashboard', icon: 'fa-house', label: 'Home' },
+                { id: 'quotations', icon: 'fa-file-lines', label: 'Quotations' },
+                { id: 'invoices', icon: 'fa-file-invoice', label: 'Invoices' }
+            ];
+
+            return (
+                <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans flex flex-col">
+                    
+                    {/* Desktop Navigation */}
+                    <nav className="hidden md:block bg-white border-b border-slate-200 sticky top-0 z-50 no-print shadow-sm">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between h-16">
+                                <div className="flex items-center cursor-pointer" onClick={() => navigate('dashboard')}>
+                                    <AppLogo />
+                                </div>
+                                <div className="flex items-center space-x-1 sm:space-x-4">
+                                    {navItems.map(item => (
+                                        <button 
+                                            key={item.id} 
+                                            onClick={() => navigate(item.id)}
+                                            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${view === item.id || (view.startsWith(item.id.replace('s','')) && item.id !== 'dashboard') ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                    <div className="w-px h-6 bg-slate-200 mx-2"></div>
+                                    <button onClick={() => navigate('customers')} className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${view === 'customers' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>Customers</button>
+                                    <button onClick={() => navigate('profile')} className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${view === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>Profile</button>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    {/* Mobile Header */}
+                    <header className="md:hidden bg-white border-b border-slate-200 sticky top-0 z-40 no-print shadow-sm">
+                        <div className="px-4 h-14 flex items-center justify-between">
+                            <AppLogo />
+                            <div className="w-8"></div> {/* Spacer for centering if needed, or empty */}
+                        </div>
+                    </header>
+
+                    {/* Main Content Area - Flexible height to push footer down */}
+                    <main className="flex-grow relative">
+                        {view === 'dashboard' && <Dashboard data={data} setView={navigate} setActiveItem={setActiveItem} />}
+                        
+                        {view === 'customers' && <Customers data={data} updateData={updateData} showToast={showToast} />}
+                        {view === 'profile' && <BusinessProfile profile={data.profile} updateData={updateData} showToast={showToast} />}
+                        
+                        {view === 'quotations' && <DocumentList type="qt" data={data} setView={setView} setActiveItem={setActiveItem} updateData={updateData} showToast={showToast} />}
+                        {view === 'quote-form' && <DocumentForm type="qt" data={data} updateData={updateData} showToast={showToast} setView={setView} activeItem={activeItem} />}
+                        {view === 'quote-preview' && <DocumentPreview type="qt" doc={activeItem} data={data} setView={setView} setActiveItem={setActiveItem} updateData={updateData} showToast={showToast} />}
+                        
+                        {view === 'invoices' && <DocumentList type="inv" data={data} setView={setView} setActiveItem={setActiveItem} updateData={updateData} showToast={showToast} />}
+                        {view === 'invoice-form' && <DocumentForm type="inv" data={data} updateData={updateData} showToast={showToast} setView={setView} activeItem={activeItem} />}
+                        {view === 'invoice-preview' && <DocumentPreview type="inv" doc={activeItem} data={data} setView={setView} setActiveItem={setActiveItem} updateData={updateData} showToast={showToast} />}
+                    </main>
+
+                    {/* Minimal Footer */}
+                    <footer className="bg-slate-50 border-t border-slate-200 py-6 mt-8 no-print text-center text-slate-500 text-sm hidden md:block">
+                        <AppLogo className="justify-center mb-2 grayscale opacity-50 scale-75" />
+                        <p>Professional Quotations & Invoices</p>
+                        <p className="mt-1">&copy; {new Date().getFullYear()} QuoteFlow. All rights reserved.</p>
+                    </footer>
+
+                    {/* Mobile Bottom Navigation Bar */}
+                    <div className="md:hidden fixed bottom-safe left-4 right-4 z-50 no-print shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+                        <div className="bg-[#1e293b] rounded-full px-2 py-2 flex justify-between items-center relative shadow-lg">
+                            {navItems.map(item => {
+                                const isActive = view === item.id || (view.startsWith(item.id.replace('s','')) && item.id !== 'dashboard');
+                                return (
+                                    <button 
+                                        key={item.id}
+                                        onClick={() => navigate(item.id)}
+                                        className="flex flex-col items-center justify-center flex-1 py-1 relative"
+                                    >
+                                        <div className={`w-12 h-8 rounded-full flex items-center justify-center transition-colors duration-200 ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                                            <i className={`fa-solid ${item.icon} text-lg`}></i>
+                                        </div>
+                                        <span className={`text-[10px] mt-1 font-medium ${isActive ? 'text-white' : 'text-slate-400'}`}>{item.label}</span>
+                                    </button>
+                                );
+                            })}
+                            
+                            {/* More Button */}
+                            <button 
+                                onClick={() => setIsMobileMenuOpen(true)}
+                                className="flex flex-col items-center justify-center flex-1 py-1"
+                            >
+                                <div className={`w-12 h-8 rounded-full flex items-center justify-center transition-colors duration-200 ${['customers', 'profile'].includes(view) ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
+                                    <i className="fa-solid fa-ellipsis text-lg"></i>
+                                </div>
+                                <span className={`text-[10px] mt-1 font-medium ${['customers', 'profile'].includes(view) ? 'text-white' : 'text-slate-400'}`}>More</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Mobile Bottom Sheet (More Menu) */}
+                    {isMobileMenuOpen && (
+                        <div className="md:hidden fixed inset-0 z-[60] no-print">
+                            {/* Backdrop */}
+                            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)}></div>
+                            
+                            {/* Sheet */}
+                            <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl transform transition-transform pb-safe">
+                                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto my-3"></div>
+                                <div className="p-4 flex flex-col gap-2">
+                                    <button onClick={() => navigate('customers')} className="flex items-center gap-4 p-4 rounded-xl active:bg-slate-50 text-left">
+                                        <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><i className="fa-solid fa-users"></i></div>
+                                        <div>
+                                            <p className="font-semibold text-slate-900">Customers</p>
+                                            <p className="text-xs text-slate-500">Manage client details</p>
+                                        </div>
+                                    </button>
+                                    <button onClick={() => navigate('profile')} className="flex items-center gap-4 p-4 rounded-xl active:bg-slate-50 text-left">
+                                        <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center"><i className="fa-solid fa-building"></i></div>
+                                        <div>
+                                            <p className="font-semibold text-slate-900">Business Profile</p>
+                                            <p className="text-xs text-slate-500">Company logo and details</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Global Toast */}
+                    <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage('')} />
+                </div>
+            );
+        };
+
+        // Render Application
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

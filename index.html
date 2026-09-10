@@ -118,7 +118,7 @@
         );
 
         // UI Components
-        const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
+        const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false, ...props }) => {
             const baseStyle = "inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all-fast focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
             const variants = {
                 primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm focus:ring-blue-500",
@@ -127,28 +127,30 @@
                 ghost: "bg-transparent hover:bg-gray-100 text-gray-700 focus:ring-gray-500"
             };
             return (
-                <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+                <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>
                     {children}
                 </button>
             );
         };
 
-        const Input = ({ label, type = 'text', value, onChange, required, placeholder, className = '', min, step }) => (
+        const Input = ({ label, type = 'text', value, onChange, required, placeholder, className = '', min, step, ...props }) => (
             <div className={`flex flex-col gap-1.5 ${className}`}>
                 {label && <label className="text-sm font-medium text-gray-700">{label} {required && <span className="text-red-500">*</span>}</label>}
                 <input
                     type={type} value={value} onChange={onChange} required={required} placeholder={placeholder} min={min} step={step}
                     className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm w-full bg-white"
+                    {...props}
                 />
             </div>
         );
 
-        const Textarea = ({ label, value, onChange, rows = 3, placeholder, className = '' }) => (
+        const Textarea = ({ label, value, onChange, rows = 3, placeholder, className = '', ...props }) => (
             <div className={`flex flex-col gap-1.5 ${className}`}>
                 {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
                 <textarea
                     value={value} onChange={onChange} rows={rows} placeholder={placeholder}
                     className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm w-full bg-white resize-y"
+                    {...props}
                 />
             </div>
         );
@@ -529,11 +531,11 @@
                                 <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                             </div>
                             <Textarea label="Billing Address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                            <div className="mt-6 flex justify-end gap-3">
+                                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                                <Button type="submit">Save Customer</Button>
+                            </div>
                         </form>
-                        <div className="mt-6 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                            <Button type="submit" form="customerForm">Save Customer</Button>
-                        </div>
                     </Modal>
 
                     {/* Delete Confirmation Modal */}
@@ -839,11 +841,11 @@
                                 <Input label="Phone Number" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} />
                                 <Input label="Email" type="email" value={newCustomer.email} onChange={e => setNewCustomer({...newCustomer, email: e.target.value})} />
                             </div>
+                            <div className="mt-6 flex justify-end gap-3">
+                                <Button type="button" variant="secondary" onClick={() => setIsCustomerModalOpen(false)}>Cancel</Button>
+                                <Button type="submit">Add & Select</Button>
+                            </div>
                         </form>
-                        <div className="mt-6 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setIsCustomerModalOpen(false)}>Cancel</Button>
-                            <Button type="submit" form="quickCustomerForm">Add & Select</Button>
-                        </div>
                     </Modal>
                 </div>
             );

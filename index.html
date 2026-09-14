@@ -1,0 +1,2091 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuoteFlow - Work Smarter. Quote Faster.</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            600: '#2563EB',
+                            700: '#1D4ED8',
+                            800: '#1E40AF',
+                            900: '#172554'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .printable-document, .printable-document * {
+                visibility: visible;
+            }
+            .printable-document {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none !important;
+                border: none !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-full flex flex-col antialiased">
+
+    <script>
+        // Data storage helper using localStorage
+        const STORAGE_KEYS = {
+            PROFILE: 'quoteflow_profile',
+            CUSTOMERS: 'quoteflow_customers',
+            QUOTATIONS: 'quoteflow_quotations',
+            INVOICES: 'quoteflow_invoices',
+            QT_SEQ: 'quoteflow_qt_seq',
+            INV_SEQ: 'quoteflow_inv_seq'
+        };
+
+        function getStore(key, defaultValue) {
+            try {
+                const item = localStorage.getItem(key);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error("Error reading localStorage", e);
+                return defaultValue;
+            }
+        }
+
+        function setStore(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {
+                console.error("Error writing localStorage", e);
+            }
+        }
+
+        // Initialize empty state if none exists (No demo data)
+        if (!localStorage.getItem(STORAGE_KEYS.CUSTOMERS)) setStore(STORAGE_KEYS.CUSTOMERS, []);
+        if (!localStorage.getItem(STORAGE_KEYS.QUOTATIONS)) setStore(STORAGE_KEYS.QUOTATIONS, []);
+        if (!localStorage.getItem(STORAGE_KEYS.INVOICES)) setStore(STORAGE_KEYS.INVOICES, []);
+        if (!localStorage.getItem(STORAGE_KEYS.PROFILE)) setStore(STORAGE_KEYS.PROFILE, {
+            businessName: '',
+            regNumber: '',
+            address: '',
+            phone: '',
+            email: '',
+            website: '',
+            bankName: '',
+            accountName: '',
+            accountNumber: '',
+            logo: ''
+        });
+        if (!localStorage.getItem(STORAGE_KEYS.QT_SEQ)) setStore(STORAGE_KEYS.QT_SEQ, 1);
+        if (!localStorage.getItem(STORAGE_KEYS.INV_SEQ)) setStore(STORAGE_KEYS.INV_SEQ, 1);
+    </script>
+
+    <!-- Desktop & Mobile Top Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('dashboard')">
+                <div class="w-10 h-10 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
+                    QF
+                </div>
+                <div>
+                    <span class="text-xl font-bold text-slate-900 tracking-tight">QuoteFlow</span>
+                    <span class="hidden md:inline-block ml-2 text-xs text-slate-500 font-medium border-l border-slate-200 pl-2">Work Smarter. Quote Faster.</span>
+                </div>
+            </div>
+
+            <!-- Desktop Nav Links -->
+            <nav class="hidden md:flex items-center space-x-1">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+                    Dashboard
+                </button>
+                <button onclick="switchTab('quotations')" id="nav-quotations" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+                    Quotations
+                </button>
+                <button onclick="switchTab('invoices')" id="nav-invoices" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+                    Invoices
+                </button>
+                <button onclick="switchTab('customers')" id="nav-customers" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+                    Customers
+                </button>
+                <button onclick="switchTab('profile')" id="nav-profile" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+                    Business Profile
+                </button>
+            </nav>
+
+            <div class="flex items-center space-x-3">
+                <button onclick="openCreateQuotationModal()" class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all flex items-center space-x-2">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Create Quotation</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-12">
+        
+        <!-- Toast Notification Area -->
+        <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+        <!-- Confirmation Modal -->
+        <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 transform transition-all">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-bold">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h3 id="confirm-title" class="text-lg font-bold text-slate-900">Confirm Action</h3>
+                        <p id="confirm-desc" class="text-sm text-slate-500">Are you sure you want to proceed?</p>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                    <button id="confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VIEW: DASHBOARD ================= -->
+        <section id="view-dashboard" class="space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Overview</h1>
+                    <p class="text-sm text-slate-500 mt-1">Track your business quotations, invoices, and performance.</p>
+                </div>
+                <button onclick="openCreateQuotationModal()" class="inline-flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Create Quotation</span>
+                </button>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Quotations</p>
+                        <h3 id="stat-total-qt" class="text-3xl font-bold text-slate-900 mt-2">0</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-blue-50 text-brand-600 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sent</p>
+                        <h3 id="stat-sent-qt" class="text-3xl font-bold text-slate-900 mt-2">0</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Accepted</p>
+                        <h3 id="stat-accepted-qt" class="text-3xl font-bold text-slate-900 mt-2">0</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Quoted</p>
+                        <h3 id="stat-total-amount" class="text-2xl font-bold text-slate-900 mt-2">RM 0.00</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-wallet"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Quotations -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden mt-8">
+                <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                    <h3 class="font-bold text-slate-900 text-lg">Recent Quotations</h3>
+                    <button onclick="switchTab('quotations')" class="text-sm font-semibold text-brand-600 hover:text-brand-700">View All</button>
+                </div>
+                <div id="dashboard-recent-quotations">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW: QUOTATIONS ================= -->
+        <section id="view-quotations" class="space-y-6 hidden">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Quotations</h1>
+                    <p class="text-sm text-slate-500 mt-1">Create, manage, and convert quotations to invoices.</p>
+                </div>
+                <button onclick="openCreateQuotationModal()" class="inline-flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Create Quotation</span>
+                </button>
+            </div>
+
+            <!-- Filter & Search Bar -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div class="relative w-full sm:w-80">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="search-quotations" oninput="renderQuotations()" placeholder="Search quotations..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                </div>
+                <div class="flex items-center space-x-3 w-full sm:w-auto">
+                    <select id="filter-quotation-status" onchange="renderQuotations()" class="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                        <option value="">All Statuses</option>
+                        <option value="Draft">Draft</option>
+                        <option value="Sent">Sent</option>
+                        <option value="Accepted">Accepted</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="Expired">Expired</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Quotations Table / List -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div id="quotations-container">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW: INVOICES ================= -->
+        <section id="view-invoices" class="space-y-6 hidden">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Invoices</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage billing records converted from quotations or created directly.</p>
+                </div>
+                <button onclick="openCreateInvoiceModal()" class="inline-flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Create Invoice</span>
+                </button>
+            </div>
+
+            <!-- Filter & Search Bar -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div class="relative w-full sm:w-80">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="search-invoices" oninput="renderInvoices()" placeholder="Search invoices..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                </div>
+                <div class="flex items-center space-x-3 w-full sm:w-auto">
+                    <select id="filter-invoice-status" onchange="renderInvoices()" class="w-full sm:w-auto bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                        <option value="">All Statuses</option>
+                        <option value="Draft">Draft</option>
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Overdue">Overdue</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Invoices Table / List -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div id="invoices-container">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= VIEW: CUSTOMERS ================= -->
+        <section id="view-customers" class="space-y-6 hidden">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Customers</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage client contact details and billing addresses.</p>
+                </div>
+                <button onclick="openCustomerModal()" class="inline-flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>Add Customer</span>
+                </button>
+            </div>
+
+            <!-- Search -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center">
+                <div class="relative w-full sm:w-80">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="search-customers" oninput="renderCustomers()" placeholder="Search customers..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                </div>
+            </div>
+
+            <!-- Customer Grid -->
+            <div id="customers-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- Dynamic Content -->
+            </div>
+        </section>
+
+        <!-- ================= VIEW: BUSINESS PROFILE ================= -->
+        <section id="view-profile" class="space-y-6 hidden">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Business Profile</h1>
+                <p class="text-sm text-slate-500 mt-1">Configure your company info and branding for quotations and invoices.</p>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 sm:p-8">
+                <form id="profile-form" onsubmit="saveProfile(event)" class="space-y-6">
+                    <!-- Logo Upload Section -->
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-slate-100">
+                        <div id="logo-preview-container" class="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden relative group">
+                            <span id="logo-placeholder-text" class="text-xs text-slate-400 font-medium text-center p-2">No Logo</span>
+                            <img id="logo-img" src="" alt="Company Logo" class="w-full h-full object-contain hidden">
+                        </div>
+                        <div class="space-y-2">
+                            <h3 class="font-bold text-slate-900">Company Logo</h3>
+                            <p class="text-xs text-slate-500">Recommended PNG, JPG, JPEG, WEBP. Max size approx 2MB. Preserves aspect ratio.</p>
+                            <div class="flex items-center space-x-3 pt-2">
+                                <label class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-colors inline-flex items-center space-x-2">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                                    <span>Upload Logo</span>
+                                    <input type="file" id="logo-file-input" accept="image/png, image/jpeg, image/jpg, image/webp" onchange="handleLogoUpload(event)" class="hidden">
+                                </label>
+                                <button type="button" onclick="removeLogo()" class="text-red-600 hover:text-red-700 text-sm font-semibold px-3 py-2">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Business Details -->
+                    <div>
+                        <h3 class="font-bold text-slate-900 mb-4 text-base">General Information</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Business / Company Name *</label>
+                                <input type="text" id="prof-businessName" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Registration Number (Optional)</label>
+                                <input type="text" id="prof-regNumber" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Business Address *</label>
+                                <textarea id="prof-address" rows="3" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Phone Number *</label>
+                                <input type="text" id="prof-phone" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address *</label>
+                                <input type="email" id="prof-email" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Website (Optional)</label>
+                                <input type="text" id="prof-website" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bank Details -->
+                    <div class="pt-6 border-t border-slate-100">
+                        <h3 class="font-bold text-slate-900 mb-4 text-base">Bank Details</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Bank Name</label>
+                                <input type="text" id="prof-bankName" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Account Name</label>
+                                <input type="text" id="prof-accountName" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Account Number</label>
+                                <input type="text" id="prof-accountNumber" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end pt-4">
+                        <button type="submit" class="bg-brand-600 hover:bg-brand-700 text-white font-semibold px-6 py-3 rounded-xl shadow-md transition-all">
+                            Save Business Profile
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Mobile Bottom Navigation Capsule -->
+    <nav class="md:hidden fixed bottom-4 left-4 right-4 bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl z-40 px-3 py-2 flex items-center justify-around text-slate-400 no-print">
+        <button onclick="switchTab('dashboard')" id="mob-nav-dashboard" class="flex flex-col items-center py-1 px-3 rounded-xl text-xs font-medium transition-colors text-white">
+            <i class="fa-solid fa-house text-lg mb-1"></i>
+            <span>Home</span>
+        </button>
+        <button onclick="switchTab('quotations')" id="mob-nav-quotations" class="flex flex-col items-center py-1 px-3 rounded-xl text-xs font-medium transition-colors hover:text-white">
+            <i class="fa-solid fa-file-lines text-lg mb-1"></i>
+            <span>Quotations</span>
+        </button>
+        <button onclick="switchTab('invoices')" id="mob-nav-invoices" class="flex flex-col items-center py-1 px-3 rounded-xl text-xs font-medium transition-colors hover:text-white">
+            <i class="fa-solid fa-receipt text-lg mb-1"></i>
+            <span>Invoices</span>
+        </button>
+        <button onclick="toggleMoreMenu()" id="mob-nav-more" class="flex flex-col items-center py-1 px-3 rounded-xl text-xs font-medium transition-colors hover:text-white">
+            <i class="fa-solid fa-ellipsis text-lg mb-1"></i>
+            <span>More</span>
+        </button>
+    </nav>
+
+    <!-- Mobile More Bottom Sheet -->
+    <div id="more-sheet" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-end justify-center hidden md:hidden no-print" onclick="toggleMoreMenu(event)">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-6 shadow-2xl space-y-4 transform transition-transform" onclick="event.stopPropagation()">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2"></div>
+            <h3 class="font-bold text-slate-900 text-lg mb-2">More Options</h3>
+            <div class="space-y-2">
+                <button onclick="switchTab('customers'); toggleMoreMenu();" class="w-full flex items-center space-x-4 p-3 rounded-xl hover:bg-slate-50 text-slate-700 font-medium">
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-brand-600 flex items-center justify-center">
+                        <i class="fa-solid fa-users"></i>
+                    </div>
+                    <span>Customers</span>
+                </button>
+                <button onclick="switchTab('profile'); toggleMoreMenu();" class="w-full flex items-center space-x-4 p-3 rounded-xl hover:bg-slate-50 text-slate-700 font-medium">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <i class="fa-solid fa-building"></i>
+                    </div>
+                    <span>Business Profile</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODALS & DOCUMENT VIEWER ================= -->
+
+    <!-- Customer Modal -->
+    <div id="customer-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="customer-modal-title" class="text-lg font-bold text-slate-900">Add Customer</h3>
+                <button onclick="closeCustomerModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <form id="customer-form" onsubmit="saveCustomer(event)" class="space-y-4">
+                <input type="hidden" id="cust-id">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Customer Name *</label>
+                    <input type="text" id="cust-name" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Company Name (Optional)</label>
+                    <input type="text" id="cust-company" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Phone *</label>
+                        <input type="text" id="cust-phone" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Email *</label>
+                        <input type="email" id="cust-email" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Billing Address *</label>
+                    <textarea id="cust-address" rows="3" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white"></textarea>
+                </div>
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" onclick="closeCustomerModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-sm transition-colors">Save Customer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quotation Form Modal -->
+    <div id="quotation-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-slate-100 p-6 sm:p-8 space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                <h3 id="quotation-modal-title" class="text-xl font-bold text-slate-900">Create Quotation</h3>
+                <button onclick="closeQuotationModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <form id="quotation-form" onsubmit="saveQuotationForm(event)" class="space-y-6">
+                <input type="hidden" id="qt-id">
+                
+                <!-- Basic Meta -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Quotation Number *</label>
+                        <input type="text" id="qt-number" required readonly class="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-600 font-semibold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Quotation Date *</label>
+                        <input type="date" id="qt-date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Valid Until *</label>
+                        <input type="date" id="qt-valid-until" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                    </div>
+                </div>
+
+                <!-- Customer Selection -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Customer *</label>
+                        <select id="qt-customer-select" onchange="handleQuotationCustomerChange()" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            <option value="">Select Customer</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button type="button" onclick="openQuickCustomerModal()" class="w-full sm:w-auto text-brand-600 hover:text-brand-700 text-sm font-semibold py-2.5 px-4 rounded-xl border border-brand-600/30 hover:bg-brand-50 transition-all flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <span>Quick Add Customer</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Items Section -->
+                <div class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-900 text-base">Line Items</h4>
+                        <button type="button" onclick="addQuotationItemRow()" class="text-xs font-semibold bg-brand-50 text-brand-600 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Add Item</span>
+                        </button>
+                    </div>
+                    
+                    <div id="qt-items-container" class="space-y-3">
+                        <!-- Dynamic Item Rows -->
+                    </div>
+                </div>
+
+                <!-- Calculations & Totals Summary -->
+                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-600 font-medium">Subtotal</span>
+                        <span id="qt-calc-subtotal" class="font-bold text-slate-900">RM 0.00</span>
+                    </div>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-slate-600 font-medium">Discount</span>
+                            <input type="number" id="qt-disc-val" value="0" min="0" step="0.01" oninput="calculateQuotationTotals()" class="w-24 bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                            <select id="qt-disc-type" onchange="calculateQuotationTotals()" class="bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                                <option value="RM">RM</option>
+                                <option value="%">%</option>
+                            </select>
+                        </div>
+                        <span id="qt-calc-discount" class="text-sm font-semibold text-red-600">- RM 0.00</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-slate-600 font-medium">Tax / SST</span>
+                            <select id="qt-tax-rate" onchange="calculateQuotationTotals()" class="bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                                <option value="0">0%</option>
+                                <option value="6">6% SST</option>
+                                <option value="8">8% SST</option>
+                                <option value="custom">Custom %</option>
+                            </select>
+                            <input type="number" id="qt-tax-custom" value="0" min="0" step="0.1" oninput="calculateQuotationTotals()" class="w-20 bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm hidden focus:outline-none focus:ring-2 focus:ring-brand-600" placeholder="%">
+                        </div>
+                        <span id="qt-calc-tax" class="text-sm font-semibold text-slate-900">RM 0.00</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-3 border-t-2 border-slate-200 text-lg">
+                        <span class="font-bold text-slate-900">Grand Total</span>
+                        <span id="qt-calc-grandtotal" class="font-extrabold text-brand-600">RM 0.00</span>
+                    </div>
+                </div>
+
+                <!-- Additional Details -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Notes</label>
+                        <textarea id="qt-notes" rows="3" placeholder="Additional notes for client..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Payment Terms</label>
+                        <textarea id="qt-payment-terms" rows="3" placeholder="e.g., 50% deposit, balance upon completion..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white"></textarea>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Terms & Conditions</label>
+                        <textarea id="qt-tc" rows="3" placeholder="Standard business terms..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white"></textarea>
+                    </div>
+                </div>
+
+                <!-- Optional Signature Toggle -->
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 flex items-center justify-between">
+                    <div>
+                        <h5 class="font-bold text-slate-900 text-sm">Customer Acceptance / Signature</h5>
+                        <p class="text-xs text-slate-500">Include manual signature line on quotation document.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="qt-include-sig" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                    </label>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+                    <button type="button" onclick="closeQuotationModal()" class="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                    <button type="button" onclick="saveQuotation('Draft')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm transition-colors">Save Draft</button>
+                    <button type="button" onclick="saveQuotation('Sent')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-md transition-colors">Save & Mark Sent</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Invoice Form Modal -->
+    <div id="invoice-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-slate-100 p-6 sm:p-8 space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                <h3 id="invoice-modal-title" class="text-xl font-bold text-slate-900">Create Invoice</h3>
+                <button onclick="closeInvoiceModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <form id="invoice-form" onsubmit="saveInvoiceForm(event)" class="space-y-6">
+                <input type="hidden" id="inv-id">
+                
+                <!-- Basic Meta -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Invoice Number *</label>
+                        <input type="text" id="inv-number" required readonly class="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-600 font-semibold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Invoice Date *</label>
+                        <input type="date" id="inv-date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Due Date *</label>
+                        <input type="date" id="inv-duedate" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                    </div>
+                </div>
+
+                <!-- Customer Selection -->
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Customer *</label>
+                    <select id="inv-customer-select" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                        <option value="">Select Customer</option>
+                    </select>
+                </div>
+
+                <!-- Items Section -->
+                <div class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-900 text-base">Line Items</h4>
+                        <button type="button" onclick="addInvoiceItemRow()" class="text-xs font-semibold bg-brand-50 text-brand-600 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Add Item</span>
+                        </button>
+                    </div>
+                    
+                    <div id="inv-items-container" class="space-y-3">
+                        <!-- Dynamic Item Rows -->
+                    </div>
+                </div>
+
+                <!-- Calculations & Totals Summary -->
+                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-600 font-medium">Subtotal</span>
+                        <span id="inv-calc-subtotal" class="font-bold text-slate-900">RM 0.00</span>
+                    </div>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-slate-600 font-medium">Discount</span>
+                            <input type="number" id="inv-disc-val" value="0" min="0" step="0.01" oninput="calculateInvoiceTotals()" class="w-24 bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                            <select id="inv-disc-type" onchange="calculateInvoiceTotals()" class="bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                                <option value="RM">RM</option>
+                                <option value="%">%</option>
+                            </select>
+                        </div>
+                        <span id="inv-calc-discount" class="text-sm font-semibold text-red-600">- RM 0.00</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-slate-600 font-medium">Tax / SST</span>
+                            <select id="inv-tax-rate" onchange="calculateInvoiceTotals()" class="bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                                <option value="0">0%</option>
+                                <option value="6">6% SST</option>
+                                <option value="8">8% SST</option>
+                                <option value="custom">Custom %</option>
+                            </select>
+                            <input type="number" id="inv-tax-custom" value="0" min="0" step="0.1" oninput="calculateInvoiceTotals()" class="w-20 bg-white border border-slate-200 rounded-lg px-3 py-1 text-sm hidden focus:outline-none focus:ring-2 focus:ring-brand-600" placeholder="%">
+                        </div>
+                        <span id="inv-calc-tax" class="text-sm font-semibold text-slate-900">RM 0.00</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-3 border-t-2 border-slate-200 text-lg">
+                        <span class="font-bold text-slate-900">Grand Total</span>
+                        <span id="inv-calc-grandtotal" class="font-extrabold text-brand-600">RM 0.00</span>
+                    </div>
+                </div>
+
+                <!-- Additional Details -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Notes</label>
+                        <textarea id="inv-notes" rows="3" placeholder="Additional notes or payment instructions..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Status</label>
+                        <select id="inv-status" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                            <option value="Draft">Draft</option>
+                            <option value="Unpaid">Unpaid</option>
+                            <option value="Paid">Paid</option>
+                            <option value="Overdue">Overdue</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+                    <button type="button" onclick="closeInvoiceModal()" class="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-md transition-colors">Save Invoice</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Document Preview & Print Modal (Quotation / Invoice A4 View) -->
+    <div id="document-preview-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-6 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-slate-100 flex flex-col">
+            <!-- Modal Header Toolbar -->
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 sticky top-0 z-20 no-print">
+                <div class="flex items-center space-x-3">
+                    <span id="preview-doc-type-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-brand-100 text-brand-800">QUOTATION</span>
+                    <h3 id="preview-doc-title" class="font-bold text-slate-900 text-lg">QT-0001</h3>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button onclick="printDocument()" class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center space-x-2">
+                        <i class="fa-solid fa-print"></i>
+                        <span>Print / Save PDF</span>
+                    </button>
+                    <button onclick="closeDocumentPreview()" class="w-9 h-9 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center font-bold">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- A4 Printable Document Container -->
+            <div class="p-6 sm:p-12 flex justify-center bg-slate-100">
+                <div id="printable-document-content" class="printable-document bg-white w-full max-w-[210min] min-h-[297mm] p-8 sm:p-14 shadow-xl rounded-xl border border-slate-200 flex flex-col justify-between text-slate-800 relative overflow-hidden">
+                    <!-- Dynamic Corporate A4 Template Content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL APP STATE & NAVIGATION ---
+        let currentTab = 'dashboard';
+
+        function switchTab(tabId) {
+            currentTab = tabId;
+            const tabs = ['dashboard', 'quotations', 'invoices', 'customers', 'profile'];
+            
+            tabs.forEach(t => {
+                const viewEl = document.getElementById(`view-${t}`);
+                const navEl = document.getElementById(`nav-${t}`);
+                const mobNavEl = document.getElementById(`mob-nav-${t}`);
+
+                if (t === tabId) {
+                    if (viewEl) viewEl.classList.remove('hidden');
+                    if (navEl) {
+                        navEl.classList.add('bg-brand-50', 'text-brand-600');
+                        navEl.classList.remove('text-slate-600', 'hover:bg-slate-100');
+                    }
+                    if (mobNavEl) {
+                        mobNavEl.classList.add('text-white');
+                        mobNavEl.classList.remove('text-slate-400');
+                    }
+                } else {
+                    if (viewEl) viewEl.classList.add('hidden');
+                    if (navEl) {
+                        navEl.classList.remove('bg-brand-50', 'text-brand-600');
+                        navEl.classList.add('text-slate-600', 'hover:bg-slate-100');
+                    }
+                    if (mobNavEl) {
+                        mobNavEl.classList.remove('text-white');
+                        mobNavEl.classList.add('text-slate-400');
+                    }
+                }
+            });
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // Refresh view data
+            if (tabId === 'dashboard') renderDashboard();
+            if (tabId === 'quotations') renderQuotations();
+            if (tabId === 'invoices') renderInvoices();
+            if (tabId === 'customers') renderCustomers();
+            if (tabId === 'profile') loadProfileForm();
+        }
+
+        function toggleMoreMenu(event) {
+            const sheet = document.getElementById('more-sheet');
+            sheet.classList.toggle('hidden');
+        }
+
+        // --- TOAST NOTIFICATIONS ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-600 text-white';
+            const icon = type === 'success' ? 'fa-circle-check text-emerald-400' : 'fa-circle-exclamation text-white';
+
+            toast.className = `${bgClass} px-5 py-3 rounded-2xl shadow-xl flex items-center space-x-3 text-sm font-medium transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icon} text-base"></i><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // --- CONFIRMATION MODAL ---
+        let confirmCallback = null;
+        function showConfirm(title, desc, callback) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-desc').innerText = desc;
+            confirmCallback = callback;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            confirmCallback = null;
+        }
+        document.getElementById('confirm-btn').addEventListener('click', () => {
+            if (confirmCallback) confirmCallback();
+            closeConfirmModal();
+        });
+
+        // --- FORMATTERS ---
+        function formatRM(amount) {
+            return 'RM ' + Number(amount || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return isNaN(d) ? dateStr : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        // --- BUSINESS PROFILE & LOGO ---
+        function loadProfileForm() {
+            const profile = getStore(STORAGE_KEYS.PROFILE, {});
+            document.getElementById('prof-businessName').value = profile.businessName || '';
+            document.getElementById('prof-regNumber').value = profile.regNumber || '';
+            document.getElementById('prof-address').value = profile.address || '';
+            document.getElementById('prof-phone').value = profile.phone || '';
+            document.getElementById('prof-email').value = profile.email || '';
+            document.getElementById('prof-website').value = profile.website || '';
+            document.getElementById('prof-bankName').value = profile.bankName || '';
+            document.getElementById('prof-accountName').value = profile.accountName || '';
+            document.getElementById('prof-accountNumber').value = profile.accountNumber || '';
+
+            const logoImg = document.getElementById('logo-img');
+            const placeholder = document.getElementById('logo-placeholder-text');
+            if (profile.logo) {
+                logoImg.src = profile.logo;
+                logoImg.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+            } else {
+                logoImg.src = '';
+                logoImg.classList.add('hidden');
+                placeholder.classList.remove('hidden');
+            }
+        }
+
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 2 * 1024 * 1024) {
+                showToast('Logo file size exceeds 2MB limit.', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64String = e.target.result;
+                const profile = getStore(STORAGE_KEYS.PROFILE, {});
+                profile.logo = base64String;
+                setStore(STORAGE_KEYS.PROFILE, profile);
+                loadProfileForm();
+                showToast('Logo uploaded successfully');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeLogo() {
+            const profile = getStore(STORAGE_KEYS.PROFILE, {});
+            profile.logo = '';
+            setStore(STORAGE_KEYS.PROFILE, profile);
+            loadProfileForm();
+            showToast('Logo removed');
+        }
+
+        function saveProfile(event) {
+            event.preventDefault();
+            const profile = getStore(STORAGE_KEYS.PROFILE, {});
+            profile.businessName = document.getElementById('prof-businessName').value;
+            profile.regNumber = document.getElementById('prof-regNumber').value;
+            profile.address = document.getElementById('prof-address').value;
+            profile.phone = document.getElementById('prof-phone').value;
+            profile.email = document.getElementById('prof-email').value;
+            profile.website = document.getElementById('prof-website').value;
+            profile.bankName = document.getElementById('prof-bankName').value;
+            profile.accountName = document.getElementById('prof-accountName').value;
+            profile.accountNumber = document.getElementById('prof-accountNumber').value;
+
+            setStore(STORAGE_KEYS.PROFILE, profile);
+            showToast('Business Profile saved successfully');
+        }
+
+        // --- CUSTOMERS MANAGEMENT ---
+        function renderCustomers() {
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            const search = document.getElementById('search-customers').value.toLowerCase();
+            const container = document.getElementById('customers-grid');
+
+            const filtered = customers.filter(c => 
+                c.name.toLowerCase().includes(search) || 
+                (c.company && c.company.toLowerCase().includes(search)) ||
+                c.email.toLowerCase().includes(search)
+            );
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full bg-white rounded-2xl border border-slate-200/80 p-12 text-center space-y-4">
+                        <div class="w-16 h-16 rounded-2xl bg-blue-50 text-brand-600 flex items-center justify-center text-2xl mx-auto">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-lg">No customers yet</h3>
+                        <p class="text-sm text-slate-500 max-w-sm mx-auto">Add your first customer to get started creating professional quotations and invoices.</p>
+                        <button onclick="openCustomerModal()" class="inline-flex items-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                            <i class="fa-solid fa-user-plus"></i>
+                            <span>Add Customer</span>
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtered.map(c => `
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between space-y-4 hover:shadow-md transition-shadow">
+                    <div>
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-lg">${c.name}</h3>
+                                ${c.company ? `<p class="text-xs font-semibold text-brand-600">${c.company}</p>` : ''}
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="editCustomer('${c.id}')" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-50"><i class="fa-solid fa-pen"></i></button>
+                                <button onclick="confirmDeleteCustomer('${c.id}')" class="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-50"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <div class="mt-4 space-y-2 text-sm text-slate-600">
+                            <div class="flex items-center space-x-2"><i class="fa-solid fa-phone text-slate-400 w-4"></i><span>${c.phone}</span></div>
+                            <div class="flex items-center space-x-2"><i class="fa-solid fa-envelope text-slate-400 w-4"></i><span>${c.email}</span></div>
+                            <div class="flex items-start space-x-2"><i class="fa-solid fa-location-dot text-slate-400 w-4 mt-1"></i><span class="whitespace-pre-line text-xs">${c.address}</span></div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openCustomerModal(id = null) {
+            document.getElementById('customer-form').reset();
+            document.getElementById('cust-id').value = '';
+            document.getElementById('customer-modal-title').innerText = 'Add Customer';
+
+            if (id) {
+                const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+                const c = customers.find(x => x.id === id);
+                if (c) {
+                    document.getElementById('customer-modal-title').innerText = 'Edit Customer';
+                    document.getElementById('cust-id').value = c.id;
+                    document.getElementById('cust-name').value = c.name;
+                    document.getElementById('cust-company').value = c.company || '';
+                    document.getElementById('cust-phone').value = c.phone;
+                    document.getElementById('cust-email').value = c.email;
+                    document.getElementById('cust-address').value = c.address;
+                }
+            }
+            document.getElementById('customer-modal').classList.remove('hidden');
+        }
+
+        function closeCustomerModal() {
+            document.getElementById('customer-modal').classList.add('hidden');
+        }
+
+        function saveCustomer(event) {
+            event.preventDefault();
+            const id = document.getElementById('cust-id').value;
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+
+            const customerData = {
+                id: id || 'CUST-' + Date.now(),
+                name: document.getElementById('cust-name').value,
+                company: document.getElementById('cust-company').value,
+                phone: document.getElementById('cust-phone').value,
+                email: document.getElementById('cust-email').value,
+                address: document.getElementById('cust-address').value
+            };
+
+            if (id) {
+                const idx = customers.findIndex(x => x.id === id);
+                if (idx !== -1) customers[idx] = customerData;
+                showToast('Customer updated successfully');
+            } else {
+                customers.push(customerData);
+                showToast('Customer added successfully');
+            }
+
+            setStore(STORAGE_KEYS.CUSTOMERS, customers);
+            closeCustomerModal();
+            renderCustomers();
+            if (currentTab === 'quotations' || currentTab === 'invoices') populateCustomerDropdowns();
+        }
+
+        function editCustomer(id) {
+            openCustomerModal(id);
+        }
+
+        function confirmDeleteCustomer(id) {
+            showConfirm('Delete Customer', 'Are you sure you want to delete this customer? This action cannot be undone.', () => {
+                let customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+                customers = customers.filter(x => x.id !== id);
+                setStore(STORAGE_KEYS.CUSTOMERS, customers);
+                renderCustomers();
+                showToast('Customer deleted');
+            });
+        }
+
+        // --- POPULATE CUSTOMER DROPDOWNS ---
+        function populateCustomerDropdowns(selectedId = '') {
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            const optionsHtml = '<option value="">Select Customer</option>' + customers.map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.name} ${c.company ? '(' + c.company + ')' : ''}</option>`).join('');
+            
+            const qtSelect = document.getElementById('qt-customer-select');
+            const invSelect = document.getElementById('inv-customer-select');
+            if (qtSelect) qtSelect.innerHTML = optionsHtml;
+            if (invSelect) invSelect.innerHTML = optionsHtml;
+        }
+
+        // Quick add customer from quotation modal
+        function openQuickCustomerModal() {
+            openCustomerModal();
+        }
+
+        // --- QUOTATIONS MANAGEMENT ---
+        function renderQuotations() {
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const search = document.getElementById('search-quotations').value.toLowerCase();
+            const statusFilter = document.getElementById('filter-quotation-status').value;
+            const container = document.getElementById('quotations-container');
+
+            const filtered = quotations.filter(q => {
+                const matchesSearch = q.number.toLowerCase().includes(search) || q.customerName.toLowerCase().includes(search);
+                const matchesStatus = statusFilter ? q.status === statusFilter : true;
+                return matchesSearch && matchesStatus;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="p-12 text-center space-y-4">
+                        <div class="w-16 h-16 rounded-2xl bg-blue-50 text-brand-600 flex items-center justify-center text-2xl mx-auto">
+                            <i class="fa-solid fa-file-lines"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-lg">No quotations found</h3>
+                        <p class="text-sm text-slate-500 max-w-sm mx-auto">Create your first quotation to get started.</p>
+                        <button onclick="openCreateQuotationModal()" class="inline-flex items-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Create Quotation</span>
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                <th class="p-4">Number</th>
+                                <th class="p-4">Customer</th>
+                                <th class="p-4">Date</th>
+                                <th class="p-4">Valid Until</th>
+                                <th class="p-4">Amount</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-sm">
+                            ${filtered.map(q => {
+                                let badgeColor = 'bg-slate-100 text-slate-700';
+                                if (q.status === 'Sent') badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200';
+                                if (q.status === 'Accepted') badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                                if (q.status === 'Rejected') badgeColor = 'bg-red-50 text-red-700 border border-red-200';
+                                if (q.status === 'Expired') badgeColor = 'bg-slate-100 text-slate-600 border border-slate-300';
+                                
+                                return `
+                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                        <td class="p-4 font-bold text-slate-900">${q.number}</td>
+                                        <td class="p-4 font-medium text-slate-700">${q.customerName}</td>
+                                        <td class="p-4 text-slate-500">${formatDate(q.date)}</td>
+                                        <td class="p-4 text-slate-500">${formatDate(q.validUntil)}</td>
+                                        <td class="p-4 font-bold text-slate-900">${formatRM(q.grandTotal)}</td>
+                                        <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor}">${q.status}</span></td>
+                                        <td class="p-4 text-right space-x-1">
+                                            <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
+                                            <button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="duplicateQuotation('${q.id}')" title="Duplicate" class="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-copy"></i></button>
+                                            ${q.status === 'Accepted' ? `<button onclick="convertQuotationToInvoice('${q.id}')" title="Convert to Invoice" class="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-file-invoice-dollar"></i></button>` : ''}
+                                            <button onclick="confirmDeleteQuotation('${q.id}')" title="Delete" class="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Quotation Items Management inside form
+        function addQuotationItemRow(item = null) {
+            const container = document.getElementById('qt-items-container');
+            const rowId = 'qt-item-' + Date.now() + Math.random().toString(36).substring(2, 5);
+            
+            const div = document.createElement('div');
+            div.className = 'grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200/80 items-center item-row';
+            div.id = rowId;
+            div.innerHTML = `
+                <div class="md:col-span-4">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Description</label>
+                    <input type="text" placeholder="Item description or service..." value="${item ? item.description : ''}" class="qt-item-desc w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600" required>
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Qty</label>
+                    <input type="number" min="1" step="1" value="${item ? item.qty : 1}" oninput="calculateQuotationTotals()" class="qt-item-qty w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600" required>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Unit</label>
+                    <select class="qt-item-unit w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                        ${['Unit', 'Piece', 'Set', 'Hour', 'Day', 'Job', 'Service'].map(u => `<option value="${u}" ${item && item.unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Unit Price (RM)</label>
+                    <input type="number" min="0" step="0.01" value="${item ? item.price : 0}" oninput="calculateQuotationTotals()" class="qt-item-price w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600" required>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Amount</label>
+                    <div class="qt-item-amount font-bold text-slate-900 text-sm py-2">RM 0.00</div>
+                </div>
+                <div class="md:col-span-1 flex justify-end">
+                    <button type="button" onclick="removeQuotationItemRow('${rowId}')" class="text-slate-400 hover:text-red-600 p-2"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `;
+            container.appendChild(div);
+            calculateQuotationTotals();
+        }
+
+        function removeQuotationItemRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+            calculateQuotationTotals();
+        }
+
+        function calculateQuotationTotals() {
+            const rows = document.querySelectorAll('#qt-items-container .item-row');
+            let subtotal = 0;
+
+            rows.forEach(r => {
+                const qty = parseFloat(r.querySelector('.qt-item-qty').value) || 0;
+                const price = parseFloat(r.querySelector('.qt-item-price').value) || 0;
+                const amt = qty * price;
+                r.querySelector('.qt-item-amount').innerText = formatRM(amt);
+                subtotal += amt;
+            });
+
+            document.getElementById('qt-calc-subtotal').innerText = formatRM(subtotal);
+
+            const discVal = parseFloat(document.getElementById('qt-disc-val').value) || 0;
+            const discType = document.getElementById('qt-disc-type').value;
+            let discountAmt = 0;
+            if (discType === 'RM') {
+                discountAmt = discVal;
+            } else {
+                discountAmt = subtotal * (discVal / 100);
+            }
+            if (discountAmt > subtotal) discountAmt = subtotal;
+            document.getElementById('qt-calc-discount').innerText = '- ' + formatRM(discountAmt);
+
+            const afterDisc = subtotal - discountAmt;
+
+            const taxRateSelect = document.getElementById('qt-tax-rate').value;
+            const customTaxInput = document.getElementById('qt-tax-custom');
+            let taxPercent = 0;
+            if (taxRateSelect === 'custom') {
+                customTaxInput.classList.remove('hidden');
+                taxPercent = parseFloat(customTaxInput.value) || 0;
+            } else {
+                customTaxInput.classList.add('hidden');
+                taxPercent = parseFloat(taxRateSelect) || 0;
+            }
+
+            const taxAmt = afterDisc * (taxPercent / 100);
+            document.getElementById('qt-calc-tax').innerText = formatRM(taxAmt);
+
+            const grandTotal = afterDisc + taxAmt;
+            document.getElementById('qt-calc-grandtotal').innerText = formatRM(grandTotal);
+        }
+
+        function openCreateQuotationModal(id = null) {
+            document.getElementById('quotation-form').reset();
+            document.getElementById('qt-id').value = '';
+            document.getElementById('qt-items-container').innerHTML = '';
+            document.getElementById('quotation-modal-title').innerText = 'Create Quotation';
+            
+            populateCustomerDropdowns();
+
+            // Set default dates
+            const today = new Date().toISOString().split('T')[0];
+            const validDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            document.getElementById('qt-date').value = today;
+            document.getElementById('qt-valid-until').value = validDate;
+
+            if (id) {
+                const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+                const q = quotations.find(x => x.id === id);
+                if (q) {
+                    document.getElementById('quotation-modal-title').innerText = 'Edit Quotation';
+                    document.getElementById('qt-id').value = q.id;
+                    document.getElementById('qt-number').value = q.number;
+                    document.getElementById('qt-date').value = q.date;
+                    document.getElementById('qt-valid-until').value = q.validUntil;
+                    populateCustomerDropdowns(q.customerId);
+                    document.getElementById('qt-notes').value = q.notes || '';
+                    document.getElementById('qt-payment-terms').value = q.paymentTerms || '';
+                    document.getElementById('qt-tc').value = q.tc || '';
+                    document.getElementById('qt-disc-val').value = q.discountVal || 0;
+                    document.getElementById('qt-disc-type').value = q.discountType || 'RM';
+                    document.getElementById('qt-tax-rate').value = q.taxRate || '0';
+                    if (q.taxRate === 'custom') {
+                        document.getElementById('qt-tax-custom').value = q.taxCustom || 0;
+                        document.getElementById('qt-tax-custom').classList.remove('hidden');
+                    }
+                    document.getElementById('qt-include-sig').checked = q.includeSig || false;
+
+                    if (q.items && q.items.length > 0) {
+                        q.items.forEach(item => addQuotationItemRow(item));
+                    }
+                }
+            } else {
+                // Generate sequential QT number
+                let seq = getStore(STORAGE_KEYS.QT_SEQ, 1);
+                document.getElementById('qt-number').value = 'QT-' + String(seq).padStart(4, '0');
+                addQuotationItemRow();
+            }
+
+            calculateQuotationTotals();
+            document.getElementById('quotation-modal').classList.remove('hidden');
+        }
+
+        function closeQuotationModal() {
+            document.getElementById('quotation-modal').classList.add('hidden');
+        }
+
+        function handleQuotationCustomerChange() {
+            // Can be used for auto-filling customer defaults if needed
+        }
+
+        function saveQuotation(targetStatus) {
+            const customerId = document.getElementById('qt-customer-select').value;
+            if (!customerId) {
+                showToast('Please select a customer', 'error');
+                return;
+            }
+
+            const itemRows = document.querySelectorAll('#qt-items-container .item-row');
+            if (itemRows.length === 0) {
+                showToast('Please add at least one item', 'error');
+                return;
+            }
+
+            let items = [];
+            let isValid = true;
+            itemRows.forEach(r => {
+                const desc = r.querySelector('.qt-item-desc').value.trim();
+                const qty = parseFloat(r.querySelector('.qt-item-qty').value);
+                const unit = r.querySelector('.qt-item-unit').value;
+                const price = parseFloat(r.querySelector('.qt-item-price').value);
+
+                if (!desc || isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
+                    isValid = false;
+                }
+                items.push({ description: desc, qty, unit, price });
+            });
+
+            if (!isValid) {
+                showToast('Please verify all items have descriptions, valid quantities and prices', 'error');
+                return;
+            }
+
+            const id = document.getElementById('qt-id').value;
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            const customer = customers.find(c => c.id === customerId);
+
+            // Compute totals
+            let subtotal = items.reduce((sum, i) => sum + (i.qty * i.price), 0);
+            const discVal = parseFloat(document.getElementById('qt-disc-val').value) || 0;
+            const discType = document.getElementById('qt-disc-type').value;
+            let discountAmt = discType === 'RM' ? discVal : subtotal * (discVal / 100);
+            if (discountAmt > subtotal) discountAmt = subtotal;
+            
+            const afterDisc = subtotal - discountAmt;
+            const taxRate = document.getElementById('qt-tax-rate').value;
+            const taxCustom = parseFloat(document.getElementById('qt-tax-custom').value) || 0;
+            const taxPercent = taxRate === 'custom' ? taxCustom : parseFloat(taxRate) || 0;
+            const taxAmt = afterDisc * (taxPercent / 100);
+            const grandTotal = afterDisc + taxAmt;
+
+            let number = document.getElementById('qt-number').value;
+
+            const quotationData = {
+                id: id || 'QT-' + Date.now(),
+                number,
+                date: document.getElementById('qt-date').value,
+                validUntil: document.getElementById('qt-valid-until').value,
+                customerId,
+                customerName: customer ? customer.name : '',
+                customerCompany: customer ? customer.company : '',
+                customerPhone: customer ? customer.phone : '',
+                customerEmail: customer ? customer.email : '',
+                customerAddress: customer ? customer.address : '',
+                items,
+                subtotal,
+                discountVal: discVal,
+                discountType: discType,
+                discountAmt,
+                taxRate,
+                taxCustom,
+                taxPercent,
+                taxAmt,
+                grandTotal,
+                notes: document.getElementById('qt-notes').value,
+                paymentTerms: document.getElementById('qt-payment-terms').value,
+                tc: document.getElementById('qt-tc').value,
+                includeSig: document.getElementById('qt-include-sig').checked,
+                status: targetStatus
+            };
+
+            if (id) {
+                const idx = quotations.findIndex(x => x.id === id);
+                if (idx !== -1) quotations[idx] = quotationData;
+                showToast('Quotation updated successfully');
+            } else {
+                quotations.push(quotationData);
+                // Increment sequence
+                let seq = getStore(STORAGE_KEYS.QT_SEQ, 1);
+                setStore(STORAGE_KEYS.QT_SEQ, seq + 1);
+                showToast('Quotation saved successfully');
+            }
+
+            setStore(STORAGE_KEYS.QUOTATIONS, quotations);
+            closeQuotationModal();
+            if (currentTab === 'quotations') renderQuotations();
+            if (currentTab === 'dashboard') renderDashboard();
+        }
+
+        function duplicateQuotation(id) {
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const q = quotations.find(x => x.id === id);
+            if (!q) return;
+
+            let seq = getStore(STORAGE_KEYS.QT_SEQ, 1);
+            const newNumber = 'QT-' + String(seq).padStart(4, '0');
+            setStore(STORAGE_KEYS.QT_SEQ, seq + 1);
+
+            const newQ = {
+                ...q,
+                id: 'QT-' + Date.now(),
+                number: newNumber,
+                date: new Date().toISOString().split('T')[0],
+                status: 'Draft'
+            };
+
+            quotations.push(newQ);
+            setStore(STORAGE_KEYS.QUOTATIONS, quotations);
+            renderQuotations();
+            showToast('Quotation duplicated successfully');
+        }
+
+        function confirmDeleteQuotation(id) {
+            showConfirm('Delete Quotation', 'Are you sure you want to delete this quotation?', () => {
+                let quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+                quotations = quotations.filter(x => x.id !== id);
+                setStore(STORAGE_KEYS.QUOTATIONS, quotations);
+                renderQuotations();
+                showToast('Quotation deleted');
+            });
+        }
+
+        // --- INVOICES MANAGEMENT ---
+        function renderInvoices() {
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const search = document.getElementById('search-invoices').value.toLowerCase();
+            const statusFilter = document.getElementById('filter-invoice-status').value;
+            const container = document.getElementById('invoices-container');
+
+            const filtered = invoices.filter(inv => {
+                const matchesSearch = inv.number.toLowerCase().includes(search) || inv.customerName.toLowerCase().includes(search);
+                const matchesStatus = statusFilter ? inv.status === statusFilter : true;
+                return matchesSearch && matchesStatus;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="p-12 text-center space-y-4">
+                        <div class="w-16 h-16 rounded-2xl bg-blue-50 text-brand-600 flex items-center justify-center text-2xl mx-auto">
+                            <i class="fa-solid fa-receipt"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-lg">No invoices found</h3>
+                        <p class="text-sm text-slate-500 max-w-sm mx-auto">Create a direct invoice or convert an accepted quotation.</p>
+                        <button onclick="openCreateInvoiceModal()" class="inline-flex items-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Create Invoice</span>
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                <th class="p-4">Number</th>
+                                <th class="p-4">Customer</th>
+                                <th class="p-4">Date</th>
+                                <th class="p-4">Due Date</th>
+                                <th class="p-4">Amount</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-sm">
+                            ${filtered.map(inv => {
+                                let badgeColor = 'bg-slate-100 text-slate-700';
+                                if (inv.status === 'Unpaid') badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200';
+                                if (inv.status === 'Paid') badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                                if (inv.status === 'Overdue') badgeColor = 'bg-red-50 text-red-700 border border-red-200';
+                                if (inv.status === 'Cancelled') badgeColor = 'bg-slate-100 text-slate-500 border border-slate-300';
+                                
+                                return `
+                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                        <td class="p-4 font-bold text-slate-900">${inv.number}</td>
+                                        <td class="p-4 font-medium text-slate-700">${inv.customerName}</td>
+                                        <td class="p-4 text-slate-500">${formatDate(inv.date)}</td>
+                                        <td class="p-4 text-slate-500">${formatDate(inv.dueDate)}</td>
+                                        <td class="p-4 font-bold text-slate-900">${formatRM(inv.grandTotal)}</td>
+                                        <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor}">${inv.status}</span></td>
+                                        <td class="p-4 text-right space-x-1">
+                                            <button onclick="previewDocument('invoice', '${inv.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
+                                            <button onclick="openCreateInvoiceModal('${inv.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="confirmDeleteInvoice('${inv.id}')" title="Delete" class="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function addInvoiceItemRow(item = null) {
+            const container = document.getElementById('inv-items-container');
+            const rowId = 'inv-item-' + Date.now() + Math.random().toString(36).substring(2, 5);
+            
+            const div = document.createElement('div');
+            div.className = 'grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200/80 items-center inv-item-row';
+            div.id = rowId;
+            div.innerHTML = `
+                <div class="md:col-span-4">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Description</label>
+                    <input type="text" placeholder="Item description..." value="${item ? item.description : ''}" class="inv-item-desc w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600" required>
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Qty</label>
+                    <input type="number" min="1" step="1" value="${item ? item.qty : 1}" oninput="calculateInvoiceTotals()" class="inv-item-qty w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600" required>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Unit</label>
+                    <select class="inv-item-unit w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600">
+                        ${['Unit', 'Piece', 'Set', 'Hour', 'Day', 'Job', 'Service'].map(u => `<option value="${u}" ${item && item.unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Unit Price (RM)</label>
+                    <input type="number" min="0" step="0.01" value="${item ? item.price : 0}" oninput="calculateInvoiceTotals()" class="inv-item-price w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600" required>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 md:hidden">Amount</label>
+                    <div class="inv-item-amount font-bold text-slate-900 text-sm py-2">RM 0.00</div>
+                </div>
+                <div class="md:col-span-1 flex justify-end">
+                    <button type="button" onclick="removeInvoiceItemRow('${rowId}')" class="text-slate-400 hover:text-red-600 p-2"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `;
+            container.appendChild(div);
+            calculateInvoiceTotals();
+        }
+
+        function removeInvoiceItemRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+            calculateInvoiceTotals();
+        }
+
+        function calculateInvoiceTotals() {
+            const rows = document.querySelectorAll('#inv-items-container .inv-item-row');
+            let subtotal = 0;
+
+            rows.forEach(r => {
+                const qty = parseFloat(r.querySelector('.inv-item-qty').value) || 0;
+                const price = parseFloat(r.querySelector('.inv-item-price').value) || 0;
+                const amt = qty * price;
+                r.querySelector('.inv-item-amount').innerText = formatRM(amt);
+                subtotal += amt;
+            });
+
+            document.getElementById('inv-calc-subtotal').innerText = formatRM(subtotal);
+
+            const discVal = parseFloat(document.getElementById('inv-disc-val').value) || 0;
+            const discType = document.getElementById('inv-disc-type').value;
+            let discountAmt = discType === 'RM' ? discVal : subtotal * (discVal / 100);
+            if (discountAmt > subtotal) discountAmt = subtotal;
+            document.getElementById('inv-calc-discount').innerText = '- ' + formatRM(discountAmt);
+
+            const afterDisc = subtotal - discountAmt;
+            const taxRateSelect = document.getElementById('inv-tax-rate').value;
+            const customTaxInput = document.getElementById('inv-tax-custom');
+            let taxPercent = 0;
+            if (taxRateSelect === 'custom') {
+                customTaxInput.classList.remove('hidden');
+                taxPercent = parseFloat(customTaxInput.value) || 0;
+            } else {
+                customTaxInput.classList.add('hidden');
+                taxPercent = parseFloat(taxRateSelect) || 0;
+            }
+
+            const taxAmt = afterDisc * (taxPercent / 100);
+            document.getElementById('inv-calc-tax').innerText = formatRM(taxAmt);
+
+            const grandTotal = afterDisc + taxAmt;
+            document.getElementById('inv-calc-grandtotal').innerText = formatRM(grandTotal);
+        }
+
+        function openCreateInvoiceModal(id = null, sourceQuotation = null) {
+            document.getElementById('invoice-form').reset();
+            document.getElementById('inv-id').value = '';
+            document.getElementById('inv-items-container').innerHTML = '';
+            document.getElementById('invoice-modal-title').innerText = 'Create Invoice';
+            
+            populateCustomerDropdowns();
+
+            const today = new Date().toISOString().split('T')[0];
+            const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            document.getElementById('inv-date').value = today;
+            document.getElementById('inv-duedate').value = dueDate;
+
+            if (sourceQuotation) {
+                document.getElementById('inv-id').value = '';
+                populateCustomerDropdowns(sourceQuotation.customerId);
+                document.getElementById('inv-notes').value = sourceQuotation.notes || '';
+                document.getElementById('inv-disc-val').value = sourceQuotation.discountVal || 0;
+                document.getElementById('inv-disc-type').value = sourceQuotation.discountType || 'RM';
+                document.getElementById('inv-tax-rate').value = sourceQuotation.taxRate || '0';
+                if (sourceQuotation.taxRate === 'custom') {
+                    document.getElementById('inv-tax-custom').value = sourceQuotation.taxCustom || 0;
+                    document.getElementById('inv-tax-custom').classList.remove('hidden');
+                }
+                if (sourceQuotation.items && sourceQuotation.items.length > 0) {
+                    sourceQuotation.items.forEach(item => addInvoiceItemRow(item));
+                }
+            } else if (id) {
+                const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+                const inv = invoices.find(x => x.id === id);
+                if (inv) {
+                    document.getElementById('invoice-modal-title').innerText = 'Edit Invoice';
+                    document.getElementById('inv-id').value = inv.id;
+                    document.getElementById('inv-number').value = inv.number;
+                    document.getElementById('inv-date').value = inv.date;
+                    document.getElementById('inv-duedate').value = inv.dueDate;
+                    populateCustomerDropdowns(inv.customerId);
+                    document.getElementById('inv-notes').value = inv.notes || '';
+                    document.getElementById('inv-status').value = inv.status;
+                    document.getElementById('inv-disc-val').value = inv.discountVal || 0;
+                    document.getElementById('inv-disc-type').value = inv.discountType || 'RM';
+                    document.getElementById('inv-tax-rate').value = inv.taxRate || '0';
+                    if (inv.taxRate === 'custom') {
+                        document.getElementById('inv-tax-custom').value = inv.taxCustom || 0;
+                        document.getElementById('inv-tax-custom').classList.remove('hidden');
+                    }
+                    if (inv.items && inv.items.length > 0) {
+                        inv.items.forEach(item => addInvoiceItemRow(item));
+                    }
+                }
+            } else {
+                let seq = getStore(STORAGE_KEYS.INV_SEQ, 1);
+                document.getElementById('inv-number').value = 'INV-' + String(seq).padStart(4, '0');
+                addInvoiceItemRow();
+            }
+
+            calculateInvoiceTotals();
+            document.getElementById('invoice-modal').classList.remove('hidden');
+        }
+
+        function closeInvoiceModal() {
+            document.getElementById('invoice-modal').classList.add('hidden');
+        }
+
+        function saveInvoiceForm(event) {
+            event.preventDefault();
+            const customerId = document.getElementById('inv-customer-select').value;
+            if (!customerId) {
+                showToast('Please select a customer', 'error');
+                return;
+            }
+
+            const itemRows = document.querySelectorAll('#inv-items-container .inv-item-row');
+            if (itemRows.length === 0) {
+                showToast('Please add at least one item', 'error');
+                return;
+            }
+
+            let items = [];
+            itemRows.forEach(r => {
+                items.push({
+                    description: r.querySelector('.inv-item-desc').value.trim(),
+                    qty: parseFloat(r.querySelector('.inv-item-qty').value),
+                    unit: r.querySelector('.inv-item-unit').value,
+                    price: parseFloat(r.querySelector('.inv-item-price').value)
+                });
+            });
+
+            const id = document.getElementById('inv-id').value;
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            const customer = customers.find(c => c.id === customerId);
+
+            let subtotal = items.reduce((sum, i) => sum + (i.qty * i.price), 0);
+            const discVal = parseFloat(document.getElementById('inv-disc-val').value) || 0;
+            const discType = document.getElementById('inv-disc-type').value;
+            let discountAmt = discType === 'RM' ? discVal : subtotal * (discVal / 100);
+            if (discountAmt > subtotal) discountAmt = subtotal;
+
+            const afterDisc = subtotal - discountAmt;
+            const taxRate = document.getElementById('inv-tax-rate').value;
+            const taxCustom = parseFloat(document.getElementById('inv-tax-custom').value) || 0;
+            const taxPercent = taxRate === 'custom' ? taxCustom : parseFloat(taxRate) || 0;
+            const taxAmt = afterDisc * (taxPercent / 100);
+            const grandTotal = afterDisc + taxAmt;
+
+            let number = document.getElementById('inv-number').value;
+
+            const invoiceData = {
+                id: id || 'INV-' + Date.now(),
+                number,
+                date: document.getElementById('inv-date').value,
+                dueDate: document.getElementById('inv-duedate').value,
+                customerId,
+                customerName: customer ? customer.name : '',
+                customerCompany: customer ? customer.company : '',
+                customerPhone: customer ? customer.phone : '',
+                customerEmail: customer ? customer.email : '',
+                customerAddress: customer ? customer.address : '',
+                items,
+                subtotal,
+                discountVal: discVal,
+                discountType: discType,
+                discountAmt,
+                taxRate,
+                taxCustom,
+                taxPercent,
+                taxAmt,
+                grandTotal,
+                notes: document.getElementById('inv-notes').value,
+                status: document.getElementById('inv-status') ? document.getElementById('inv-status').value : 'Unpaid'
+            };
+
+            if (id) {
+                const idx = invoices.findIndex(x => x.id === id);
+                if (idx !== -1) invoices[idx] = invoiceData;
+                showToast('Invoice updated successfully');
+            } else {
+                invoices.push(invoiceData);
+                let seq = getStore(STORAGE_KEYS.INV_SEQ, 1);
+                setStore(STORAGE_KEYS.INV_SEQ, seq + 1);
+                showToast('Invoice saved successfully');
+            }
+
+            setStore(STORAGE_KEYS.INVOICES, invoices);
+            closeInvoiceModal();
+            if (currentTab === 'invoices') renderInvoices();
+            if (currentTab === 'dashboard') renderDashboard();
+        }
+
+        function convertQuotationToInvoice(quotationId) {
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const q = quotations.find(x => x.id === quotationId);
+            if (!q) return;
+
+            let seq = getStore(STORAGE_KEYS.INV_SEQ, 1);
+            const newInvNumber = 'INV-' + String(seq).padStart(4, '0');
+            setStore(STORAGE_KEYS.INV_SEQ, seq + 1);
+
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const newInv = {
+                id: 'INV-' + Date.now(),
+                number: newInvNumber,
+                date: new Date().toISOString().split('T')[0],
+                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                customerId: q.customerId,
+                customerName: q.customerName,
+                customerCompany: q.customerCompany,
+                customerPhone: q.customerPhone,
+                customerEmail: q.customerEmail,
+                customerAddress: q.customerAddress,
+                items: q.items,
+                subtotal: q.subtotal,
+                discountVal: q.discountVal,
+                discountType: q.discountType,
+                discountAmt: q.discountAmt,
+                taxRate: q.taxRate,
+                taxCustom: q.taxCustom,
+                taxPercent: q.taxPercent,
+                taxAmt: q.taxAmt,
+                grandTotal: q.grandTotal,
+                notes: q.notes,
+                status: 'Unpaid'
+            };
+
+            invoices.push(newInv);
+            setStore(STORAGE_KEYS.INVOICES, invoices);
+            showToast('Quotation converted to Invoice successfully');
+            switchTab('invoices');
+        }
+
+        function confirmDeleteInvoice(id) {
+            showConfirm('Delete Invoice', 'Are you sure you want to delete this invoice?', () => {
+                let invoices = getStore(STORAGE_KEYS.INVOICES, []);
+                invoices = invoices.filter(x => x.id !== id);
+                setStore(STORAGE_KEYS.INVOICES, invoices);
+                renderInvoices();
+                showToast('Invoice deleted');
+            });
+        }
+
+        // --- DASHBOARD RENDERING ---
+        function renderDashboard() {
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const totalQt = quotations.length;
+            const sentQt = quotations.filter(q => q.status === 'Sent').length;
+            const acceptedQt = quotations.filter(q => q.status === 'Accepted').length;
+            const totalQuotedAmount = quotations.reduce((sum, q) => sum + (q.grandTotal || 0), 0);
+
+            document.getElementById('stat-total-qt').innerText = totalQt;
+            document.getElementById('stat-sent-qt').innerText = sentQt;
+            document.getElementById('stat-accepted-qt').innerText = acceptedQt;
+            document.getElementById('stat-total-amount').innerText = formatRM(totalQuotedAmount);
+
+            const recentContainer = document.getElementById('dashboard-recent-quotations');
+            const recent = [...quotations].reverse().slice(0, 5);
+
+            if (recent.length === 0) {
+                recentContainer.innerHTML = `
+                    <div class="p-12 text-center space-y-4">
+                        <div class="w-16 h-16 rounded-2xl bg-blue-50 text-brand-600 flex items-center justify-center text-2xl mx-auto">
+                            <i class="fa-solid fa-file-lines"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-lg">No quotations yet</h3>
+                        <p class="text-sm text-slate-500 max-w-sm mx-auto">Create your first quotation to get started.</p>
+                        <button onclick="openCreateQuotationModal()" class="inline-flex items-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Create Quotation</span>
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            recentContainer.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-400 text-xs font-bold uppercase tracking-wider bg-slate-50/50">
+                                <th class="p-4">Number</th>
+                                <th class="p-4">Customer</th>
+                                <th class="p-4">Date</th>
+                                <th class="p-4">Amount</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-sm">
+                            ${recent.map(q => `
+                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                    <td class="p-4 font-bold text-slate-900">${q.number}</td>
+                                    <td class="p-4 font-medium text-slate-700">${q.customerName}</td>
+                                    <td class="p-4 text-slate-500">${formatDate(q.date)}</td>
+                                    <td class="p-4 font-bold text-slate-900">${formatRM(q.grandTotal)}</td>
+                                    <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">${q.status}</span></td>
+                                    <td class="p-4 text-right">
+                                        <button onclick="previewDocument('quotation', '${q.id}')" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // --- PROFESSIONAL A4 DOCUMENT PREVIEW & PRINT ---
+        let currentPreviewDoc = null;
+
+        function previewDocument(type, id) {
+            let docData = null;
+            if (type === 'quotation') {
+                const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+                docData = quotations.find(x => x.id === id);
+            } else {
+                const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+                docData = invoices.find(x => x.id === id);
+            }
+
+            if (!docData) return;
+            currentPreviewDoc = { type, data: docData };
+
+            document.getElementById('preview-doc-type-badge').innerText = type.toUpperCase();
+            document.getElementById('preview-doc-title').innerText = docData.number;
+
+            const profile = getStore(STORAGE_KEYS.PROFILE, {});
+            const container = document.getElementById('printable-document-content');
+
+            const isQt = type === 'quotation';
+            const docTitle = isQt ? 'QUOTATION' : 'INVOICE';
+
+            container.innerHTML = `
+                <div>
+                    <!-- Header Section -->
+                    <div class="flex justify-between items-start pb-8 border-b border-slate-200">
+                        <div class="space-y-3">
+                            ${profile.logo ? `<img src="${profile.logo}" alt="Company Logo" class="h-16 object-contain">` : `<div class="text-xl font-bold text-slate-900">${profile.businessName || 'Your Business Name'}</div>`}
+                            <div class="text-xs text-slate-600 space-y-1 max-w-xs">
+                                <p class="font-bold text-slate-900">${profile.businessName || ''}</p>
+                                ${profile.regNumber ? `<p>Co. Reg: ${profile.regNumber}</p>` : ''}
+                                <p class="whitespace-pre-line">${profile.address || ''}</p>
+                                <p>Phone: ${profile.phone || ''} | Email: ${profile.email || ''}</p>
+                                ${profile.website ? `<p>Web: ${profile.website}</p>` : ''}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="bg-brand-600 text-white px-6 py-3 rounded-xl shadow-md inline-block">
+                                <h1 class="text-xl font-black tracking-widest uppercase">${docTitle}</h1>
+                            </div>
+                            <div class="mt-4 text-xs space-y-1 text-slate-600">
+                                <p><span class="font-bold text-slate-900">${docTitle} No:</span> ${docData.number}</p>
+                                <p><span class="font-bold text-slate-900">Date:</span> ${formatDate(docData.date)}</p>
+                                <p><span class="font-bold text-slate-900">${isQt ? 'Valid Until' : 'Due Date'}:</span> ${formatDate(isQt ? docData.validUntil : docData.dueDate)}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bill To Section -->
+                    <div class="py-6 grid grid-cols-2 gap-8 text-sm border-b border-slate-200">
+                        <div>
+                            <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Billed To:</h4>
+                            <p class="font-bold text-slate-900 text-base">${docData.customerName}</p>
+                            ${docData.customerCompany ? `<p class="font-semibold text-brand-600 text-xs">${docData.customerCompany}</p>` : ''}
+                            <p class="text-slate-600 text-xs mt-1">Phone: ${docData.customerPhone} | Email: ${docData.customerEmail}</p>
+                            <p class="text-slate-600 text-xs mt-1 whitespace-pre-line">${docData.customerAddress}</p>
+                        </div>
+                        <div class="text-right flex flex-col justify-end">
+                            ${!isQt ? `<p class="text-xs font-bold text-slate-500">Status: <span class="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-800">${docData.status}</span></p>` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Items Table -->
+                    <div class="py-6">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900 text-white text-xs font-bold uppercase tracking-wider">
+                                    <th class="p-3 rounded-l-lg">Description</th>
+                                    <th class="p-3 text-center">Qty</th>
+                                    <th class="p-3 text-center">Unit</th>
+                                    <th class="p-3 text-right">Unit Price</th>
+                                    <th class="p-3 text-right rounded-r-lg">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-xs">
+                                ${docData.items.map(item => `
+                                    <tr>
+                                        <td class="p-3 font-medium text-slate-900">${item.description}</td>
+                                        <td class="p-3 text-center text-slate-700">${item.qty}</td>
+                                        <td class="p-3 text-center text-slate-700">${item.unit}</td>
+                                        <td class="p-3 text-right text-slate-700">${formatRM(item.price)}</td>
+                                        <td class="p-3 text-right font-bold text-slate-900">${formatRM(item.qty * item.price)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Totals Summary -->
+                    <div class="flex justify-end pt-4">
+                        <div class="w-72 space-y-2 text-xs">
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-500">Subtotal</span>
+                                <span class="font-bold text-slate-900">${formatRM(docData.subtotal)}</span>
+                            </div>
+                            ${docData.discountAmt > 0 ? `
+                                <div class="flex justify-between py-1 border-b border-slate-100">
+                                    <span class="text-slate-500">Discount</span>
+                                    <span class="font-semibold text-red-600">- ${formatRM(docData.discountAmt)}</span>
+                                </div>
+                            ` : ''}
+                            ${docData.taxAmt > 0 ? `
+                                <div class="flex justify-between py-1 border-b border-slate-100">
+                                    <span class="text-slate-500">Tax / SST (${docData.taxPercent}%)</span>
+                                    <span class="font-semibold text-slate-900">${formatRM(docData.taxAmt)}</span>
+                                </div>
+                            ` : ''}
+                            <div class="flex justify-between py-3 bg-brand-600 text-white px-4 rounded-xl font-bold text-sm shadow-md">
+                                <span>Grand Total</span>
+                                <span>${formatRM(docData.grandTotal)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bank Details, Notes & T&C -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-8 mt-6 border-t border-slate-200 text-xs">
+                        <div class="space-y-3">
+                            ${profile.bankName ? `
+                                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
+                                    <h5 class="font-bold text-slate-900">Bank Payment Details</h5>
+                                    <p class="text-slate-600">Bank: <span class="font-semibold text-slate-900">${profile.bankName}</span></p>
+                                    <p class="text-slate-600">Account Name: <span class="font-semibold text-slate-900">${profile.accountName}</span></p>
+                                    <p class="text-slate-600">Account Number: <span class="font-semibold text-slate-900">${profile.accountNumber}</span></p>
+                                </div>
+                            ` : ''}
+                            ${docData.notes ? `
+                                <div>
+                                    <h5 class="font-bold text-slate-900 mb-1">Notes</h5>
+                                    <p class="text-slate-600 whitespace-pre-line">${docData.notes}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="space-y-3">
+                            ${docData.paymentTerms ? `
+                                <div>
+                                    <h5 class="font-bold text-slate-900 mb-1">Payment Terms</h5>
+                                    <p class="text-slate-600 whitespace-pre-line">${docData.paymentTerms}</p>
+                                </div>
+                            ` : ''}
+                            ${docData.tc ? `
+                                <div>
+                                    <h5 class="font-bold text-slate-900 mb-1">Terms & Conditions</h5>
+                                    <p class="text-slate-600 whitespace-pre-line">${docData.tc}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Optional Customer Acceptance / Signature -->
+                    ${isQt && docData.includeSig ? `
+                        <div class="pt-12 mt-8 border-t border-slate-200 text-xs">
+                            <h5 class="font-bold text-slate-900 uppercase tracking-wider mb-6">Customer Acceptance</h5>
+                            <div class="grid grid-cols-3 gap-6">
+                                <div>
+                                    <div class="border-b border-slate-400 pb-1 mb-1">&nbsp;</div>
+                                    <p class="text-slate-500 font-semibold">Name:</p>
+                                </div>
+                                <div>
+                                    <div class="border-b border-slate-400 pb-1 mb-1">&nbsp;</div>
+                                    <p class="text-slate-500 font-semibold">Signature:</p>
+                                </div>
+                                <div>
+                                    <div class="border-b border-slate-400 pb-1 mb-1">&nbsp;</div>
+                                    <p class="text-slate-500 font-semibold">Date:</p>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- Footer Corporate Accent -->
+                <div class="pt-8 mt-8 border-t border-slate-200 text-center text-[10px] text-slate-400 space-y-1">
+                    <p>${profile.businessName || ''} • ${profile.phone || ''} • ${profile.email || ''}</p>
+                    <div class="w-full h-1 bg-brand-600 rounded-full mt-2"></div>
+                </div>
+            `;
+
+            document.getElementById('document-preview-modal').classList.remove('hidden');
+        }
+
+        function closeDocumentPreview() {
+            document.getElementById('document-preview-modal').classList.add('hidden');
+            currentPreviewDoc = null;
+        }
+
+        function printDocument() {
+            window.print();
+        }
+
+        // --- INITIALIZATION ON WINDOW LOAD ---
+        window.onload = function() {
+            switchTab('dashboard');
+        };
+    </script>
+
+</body>
+</html>

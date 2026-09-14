@@ -178,7 +178,14 @@
         // localStorage is kept as a fast cache; Supabase is the source of truth once signed in.
         const SUPABASE_URL = 'https://bzorsguuopdlfbnnufej.supabase.co';
         const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_d0Gc9IjZThCuNpSonpmHhg_Pve4Z-Gm';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true,
+                flowType: 'implicit'
+            }
+        });
 
         const STORAGE_KEYS = {
             PROFILE: 'quoteflow_profile',
@@ -474,7 +481,7 @@
             if (!email || password.length < 8) { setAuthMessage('Use a valid email and a password with at least 8 characters.', 'error'); return; }
             const btn = document.getElementById('auth-signup-btn');
             btn.disabled = true; btn.textContent = 'Creating…';
-            const { data, error } = await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: 'https://quote-flow-theta.vercel.app' } });
+            const { data, error } = await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: 'https://quote-flow-theta.vercel.app/' } });
             btn.disabled = false; btn.textContent = 'Create Account';
             if (error) return setAuthMessage(error.message, 'error');
             if (!data.session) setAuthMessage('Account created. Check your email and confirm your account, then log in.', 'success');
@@ -2549,14 +2556,54 @@
             window.print();
         }
 
-        // --- INITIALIZATION ON WINDOW LOAD ---
-        window.onload = async function() {
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            await handleSession(session);
+        // --- AUTH CALLBACK + INITIALIZATION ---
+        async function initializeAuth() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+                const authError = params.get('error_description') || params.get('error') || hashParams.get('error_description') || hashParams.get('error');
+                if (authError) {
+                    history.replaceState({}, document.title, window.location.pathname);
+                    showAuthScreen(true);
+                    setAuthMessage(decodeURIComponent(authError.replace(/\+/g, ' ')), 'error');
+                    return;
+                }
+
+                // Support code-based callbacks if Supabase sends one.
+                const code = params.get('code');
+                if (code) {
+                    const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
+                    if (error && !/code verifier/i.test(error.message || '')) throw error;
+                }
+
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                if (error) throw error;
+
+                const hasAuthCallback = Boolean(code || hashParams.get('access_token') || params.get('token_hash') || params.get('type') === 'signup');
+                if (hasAuthCallback) {
+                    history.replaceState({}, document.title, window.location.pathname);
+                }
+
+                await handleSession(session);
+                if (session && hasAuthCallback) {
+                    if (typeof showToast === 'function') showToast('Email verified. Welcome to QuoteFlow!', 'success');
+                } else if (!session && hasAuthCallback) {
+                    showAuthScreen(true);
+                    setAuthMessage('Email verified. Please log in with your email and password.', 'success');
+                }
+            } catch (err) {
+                console.error('Auth callback error:', err);
+                history.replaceState({}, document.title, window.location.pathname);
+                showAuthScreen(true);
+                setAuthMessage('Email verification completed, but the login session could not be opened automatically. Please log in.', 'info');
+            }
+
             supabaseClient.auth.onAuthStateChange((_event, newSession) => {
                 setTimeout(() => handleSession(newSession), 0);
             });
-        };
+        }
+
+        window.onload = initializeAuth;
     </script>
 
 </body>

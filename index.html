@@ -29,6 +29,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         /* Custom scrollbar */
@@ -172,7 +174,12 @@
 <body class="bg-slate-50 text-slate-800 min-h-full flex flex-col antialiased">
 
     <script>
-        // Data storage helper using localStorage
+        // QuoteFlow local cache + Supabase cloud sync.
+        // localStorage is kept as a fast cache; Supabase is the source of truth once signed in.
+        const SUPABASE_URL = 'https://bzorsguuopdlfbnnufej.supabase.co';
+        const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_d0Gc9IjZThCuNpSonpmHhg_Pve4Z-Gm';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
         const STORAGE_KEYS = {
             PROFILE: 'quoteflow_profile',
             CUSTOMERS: 'quoteflow_customers',
@@ -182,12 +189,18 @@
             INV_SEQ: 'quoteflow_inv_seq'
         };
 
+        let currentUser = null;
+        let cloudReady = false;
+        let suppressCloudSync = false;
+        let syncTimer = null;
+        let syncInFlight = Promise.resolve();
+
         function getStore(key, defaultValue) {
             try {
                 const item = localStorage.getItem(key);
                 return item ? JSON.parse(item) : defaultValue;
             } catch (e) {
-                console.error("Error reading localStorage", e);
+                console.error('Error reading localStorage', e);
                 return defaultValue;
             }
         }
@@ -195,30 +208,337 @@
         function setStore(key, value) {
             try {
                 localStorage.setItem(key, JSON.stringify(value));
+                if (!suppressCloudSync && cloudReady && currentUser && [STORAGE_KEYS.PROFILE, STORAGE_KEYS.CUSTOMERS, STORAGE_KEYS.QUOTATIONS, STORAGE_KEYS.INVOICES].includes(key)) {
+                    scheduleCloudSync();
+                }
             } catch (e) {
-                console.error("Error writing localStorage", e);
+                console.error('Error writing localStorage', e);
             }
         }
 
-        // Initialize empty state if none exists (No demo data)
-        if (!localStorage.getItem(STORAGE_KEYS.CUSTOMERS)) setStore(STORAGE_KEYS.CUSTOMERS, []);
-        if (!localStorage.getItem(STORAGE_KEYS.QUOTATIONS)) setStore(STORAGE_KEYS.QUOTATIONS, []);
-        if (!localStorage.getItem(STORAGE_KEYS.INVOICES)) setStore(STORAGE_KEYS.INVOICES, []);
-        if (!localStorage.getItem(STORAGE_KEYS.PROFILE)) setStore(STORAGE_KEYS.PROFILE, {
-            businessName: '',
-            regNumber: '',
-            address: '',
-            phone: '',
-            email: '',
-            website: '',
-            bankName: '',
-            accountName: '',
-            accountNumber: '',
-            logo: ''
-        });
-        if (!localStorage.getItem(STORAGE_KEYS.QT_SEQ)) setStore(STORAGE_KEYS.QT_SEQ, 1);
-        if (!localStorage.getItem(STORAGE_KEYS.INV_SEQ)) setStore(STORAGE_KEYS.INV_SEQ, 1);
+        function isUuid(value) {
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
+        }
+
+        function normalizeLocalIds() {
+            let customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            let quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            let invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const customerMap = new Map();
+            const quoteMap = new Map();
+
+            customers = customers.map(c => {
+                const oldId = c.id;
+                const id = isUuid(oldId) ? oldId : crypto.randomUUID();
+                customerMap.set(oldId, id);
+                return { ...c, id };
+            });
+            quotations = quotations.map(q => {
+                const oldId = q.id;
+                const id = isUuid(oldId) ? oldId : crypto.randomUUID();
+                quoteMap.set(oldId, id);
+                return { ...q, id, customerId: customerMap.get(q.customerId) || q.customerId || null };
+            });
+            invoices = invoices.map(inv => ({
+                ...inv,
+                id: isUuid(inv.id) ? inv.id : crypto.randomUUID(),
+                customerId: customerMap.get(inv.customerId) || inv.customerId || null,
+                sourceQuotationId: quoteMap.get(inv.sourceQuotationId) || inv.sourceQuotationId || null
+            }));
+
+            suppressCloudSync = true;
+            setStore(STORAGE_KEYS.CUSTOMERS, customers);
+            setStore(STORAGE_KEYS.QUOTATIONS, quotations);
+            setStore(STORAGE_KEYS.INVOICES, invoices);
+            suppressCloudSync = false;
+        }
+
+        function scheduleCloudSync() {
+            clearTimeout(syncTimer);
+            syncTimer = setTimeout(() => {
+                syncInFlight = syncInFlight.then(syncAllToCloud).catch(err => {
+                    console.error('QuoteFlow cloud sync failed', err);
+                    if (typeof showToast === 'function') showToast('Cloud sync failed. Your local copy is still safe.', 'error');
+                });
+            }, 500);
+        }
+
+        function quoteTermsPayload(q) {
+            return JSON.stringify({
+                paymentTerms: q.paymentTerms || '',
+                tc: q.tc || '',
+                discountVal: q.discountVal || 0,
+                discountType: q.discountType || 'RM',
+                taxRate: q.taxRate || '0',
+                taxCustom: q.taxCustom || 0,
+                taxPercent: q.taxPercent || 0,
+                customerSnapshot: {
+                    name: q.customerName || '', company: q.customerCompany || '', phone: q.customerPhone || '',
+                    email: q.customerEmail || '', address: q.customerAddress || ''
+                }
+            });
+        }
+
+        function invoiceTermsPayload(inv) {
+            return JSON.stringify({
+                discountVal: inv.discountVal || 0,
+                discountType: inv.discountType || 'RM',
+                taxRate: inv.taxRate || '0',
+                taxCustom: inv.taxCustom || 0,
+                taxPercent: inv.taxPercent || 0,
+                customerSnapshot: {
+                    name: inv.customerName || '', company: inv.customerCompany || '', phone: inv.customerPhone || '',
+                    email: inv.customerEmail || '', address: inv.customerAddress || ''
+                }
+            });
+        }
+
+        function safeJson(text, fallback = {}) {
+            try { return text ? JSON.parse(text) : fallback; } catch { return fallback; }
+        }
+
+        async function syncAllToCloud() {
+            if (!currentUser || !cloudReady) return;
+            normalizeLocalIds();
+            const userId = currentUser.id;
+            const profile = getStore(STORAGE_KEYS.PROFILE, {});
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const customerIds = new Set(customers.map(c => c.id));
+            const quotationIds = new Set(quotations.map(q => q.id));
+
+            // Profile upsert
+            const { error: profileErr } = await supabaseClient.from('business_profiles').upsert({
+                user_id: userId,
+                business_name: profile.businessName || '',
+                registration_no: profile.regNumber || '',
+                address: profile.address || '', phone: profile.phone || '', email: profile.email || '', website: profile.website || '',
+                bank_name: profile.bankName || '', bank_account_name: profile.accountName || '', bank_account_no: profile.accountNumber || '',
+                logo_url: profile.logo || '', updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
+            if (profileErr) throw profileErr;
+
+            // Full per-user snapshot sync. Delete children first to satisfy FKs.
+            let r;
+            r = await supabaseClient.from('invoice_items').delete().eq('user_id', userId); if (r.error) throw r.error;
+            r = await supabaseClient.from('invoices').delete().eq('user_id', userId); if (r.error) throw r.error;
+            r = await supabaseClient.from('quotation_items').delete().eq('user_id', userId); if (r.error) throw r.error;
+            r = await supabaseClient.from('quotations').delete().eq('user_id', userId); if (r.error) throw r.error;
+            r = await supabaseClient.from('customers').delete().eq('user_id', userId); if (r.error) throw r.error;
+
+            if (customers.length) {
+                const rows = customers.map(c => ({ id: c.id, user_id: userId, name: c.name, company_name: c.company || '', email: c.email || '', phone: c.phone || '', address: c.address || '' }));
+                r = await supabaseClient.from('customers').insert(rows); if (r.error) throw r.error;
+            }
+
+            if (quotations.length) {
+                const rows = quotations.map(q => ({
+                    id: q.id, user_id: userId, customer_id: customerIds.has(q.customerId) ? q.customerId : null,
+                    quotation_no: q.number, quotation_date: q.date || null, valid_until: q.validUntil || null, status: q.status || 'Draft',
+                    subtotal: q.subtotal || 0, discount: q.discountAmt || 0, tax: q.taxAmt || 0, total: q.grandTotal || 0,
+                    notes: q.notes || '', terms: quoteTermsPayload(q), include_signature: !!q.includeSig, updated_at: new Date().toISOString()
+                }));
+                r = await supabaseClient.from('quotations').insert(rows); if (r.error) throw r.error;
+                const itemRows = quotations.flatMap(q => (q.items || []).map((item, index) => ({
+                    quotation_id: q.id, user_id: userId, description: item.description || '', quantity: item.qty || 0,
+                    unit: item.unit || '', unit_price: item.price || 0, discount: 0, amount: (item.qty || 0) * (item.price || 0), sort_order: index
+                })));
+                if (itemRows.length) { r = await supabaseClient.from('quotation_items').insert(itemRows); if (r.error) throw r.error; }
+            }
+
+            if (invoices.length) {
+                const rows = invoices.map(inv => ({
+                    id: inv.id, user_id: userId, customer_id: customerIds.has(inv.customerId) ? inv.customerId : null,
+                    quotation_id: quotationIds.has(inv.sourceQuotationId) ? inv.sourceQuotationId : null,
+                    invoice_no: inv.number, invoice_date: inv.date || null, due_date: inv.dueDate || null, status: inv.status || 'Draft',
+                    subtotal: inv.subtotal || 0, discount: inv.discountAmt || 0, tax: inv.taxAmt || 0, total: inv.grandTotal || 0,
+                    notes: inv.notes || '', terms: invoiceTermsPayload(inv), updated_at: new Date().toISOString()
+                }));
+                r = await supabaseClient.from('invoices').insert(rows); if (r.error) throw r.error;
+                const itemRows = invoices.flatMap(inv => (inv.items || []).map((item, index) => ({
+                    invoice_id: inv.id, user_id: userId, description: item.description || '', quantity: item.qty || 0,
+                    unit: item.unit || '', unit_price: item.price || 0, discount: 0, amount: (item.qty || 0) * (item.price || 0), sort_order: index
+                })));
+                if (itemRows.length) { r = await supabaseClient.from('invoice_items').insert(itemRows); if (r.error) throw r.error; }
+            }
+            setCloudStatus('Synced');
+        }
+
+        function nextSequence(items, prefix) {
+            let max = 0;
+            for (const item of items) {
+                const m = String(item.number || '').match(new RegExp('^' + prefix + '-(\\d+)$'));
+                if (m) max = Math.max(max, Number(m[1]));
+            }
+            return max + 1;
+        }
+
+        async function loadCloudState() {
+            if (!currentUser) return;
+            setCloudStatus('Loading…');
+            const userId = currentUser.id;
+            const [profileRes, customersRes, quotesRes, quoteItemsRes, invoicesRes, invoiceItemsRes] = await Promise.all([
+                supabaseClient.from('business_profiles').select('*').eq('user_id', userId).maybeSingle(),
+                supabaseClient.from('customers').select('*').eq('user_id', userId).order('created_at'),
+                supabaseClient.from('quotations').select('*').eq('user_id', userId).order('created_at'),
+                supabaseClient.from('quotation_items').select('*').eq('user_id', userId).order('sort_order'),
+                supabaseClient.from('invoices').select('*').eq('user_id', userId).order('created_at'),
+                supabaseClient.from('invoice_items').select('*').eq('user_id', userId).order('sort_order')
+            ]);
+            const errors = [profileRes.error, customersRes.error, quotesRes.error, quoteItemsRes.error, invoicesRes.error, invoiceItemsRes.error].filter(Boolean);
+            if (errors.length) throw errors[0];
+
+            const cloudHasData = !!profileRes.data || (customersRes.data?.length || 0) + (quotesRes.data?.length || 0) + (invoicesRes.data?.length || 0) > 0;
+            const localHasData = getStore(STORAGE_KEYS.CUSTOMERS, []).length || getStore(STORAGE_KEYS.QUOTATIONS, []).length || getStore(STORAGE_KEYS.INVOICES, []).length || getStore(STORAGE_KEYS.PROFILE, {}).businessName;
+
+            cloudReady = true;
+            if (!cloudHasData && localHasData) {
+                normalizeLocalIds();
+                await syncAllToCloud();
+                setCloudStatus('Synced');
+                return;
+            }
+
+            const customers = (customersRes.data || []).map(c => ({ id: c.id, name: c.name || '', company: c.company_name || '', email: c.email || '', phone: c.phone || '', address: c.address || '' }));
+            const customerById = Object.fromEntries(customers.map(c => [c.id, c]));
+            const qItems = {};
+            for (const item of quoteItemsRes.data || []) (qItems[item.quotation_id] ||= []).push({ description: item.description || '', qty: Number(item.quantity || 0), unit: item.unit || '', price: Number(item.unit_price || 0) });
+            const invItems = {};
+            for (const item of invoiceItemsRes.data || []) (invItems[item.invoice_id] ||= []).push({ description: item.description || '', qty: Number(item.quantity || 0), unit: item.unit || '', price: Number(item.unit_price || 0) });
+
+            const quotations = (quotesRes.data || []).map(q => {
+                const meta = safeJson(q.terms, {}); const c = meta.customerSnapshot || customerById[q.customer_id] || {};
+                return {
+                    id: q.id, number: q.quotation_no, date: q.quotation_date || '', validUntil: q.valid_until || '', customerId: q.customer_id || '',
+                    customerName: c.name || '', customerCompany: c.company || '', customerPhone: c.phone || '', customerEmail: c.email || '', customerAddress: c.address || '',
+                    items: qItems[q.id] || [], subtotal: Number(q.subtotal || 0), discountVal: Number(meta.discountVal || 0), discountType: meta.discountType || 'RM',
+                    discountAmt: Number(q.discount || 0), taxRate: meta.taxRate ?? '0', taxCustom: Number(meta.taxCustom || 0), taxPercent: Number(meta.taxPercent || 0),
+                    taxAmt: Number(q.tax || 0), grandTotal: Number(q.total || 0), notes: q.notes || '', paymentTerms: meta.paymentTerms || '', tc: meta.tc || '', includeSig: !!q.include_signature, status: q.status || 'Draft'
+                };
+            });
+            const invoices = (invoicesRes.data || []).map(inv => {
+                const meta = safeJson(inv.terms, {}); const c = meta.customerSnapshot || customerById[inv.customer_id] || {};
+                return {
+                    id: inv.id, number: inv.invoice_no, date: inv.invoice_date || '', dueDate: inv.due_date || '', customerId: inv.customer_id || '', sourceQuotationId: inv.quotation_id || '',
+                    customerName: c.name || '', customerCompany: c.company || '', customerPhone: c.phone || '', customerEmail: c.email || '', customerAddress: c.address || '',
+                    items: invItems[inv.id] || [], subtotal: Number(inv.subtotal || 0), discountVal: Number(meta.discountVal || 0), discountType: meta.discountType || 'RM',
+                    discountAmt: Number(inv.discount || 0), taxRate: meta.taxRate ?? '0', taxCustom: Number(meta.taxCustom || 0), taxPercent: Number(meta.taxPercent || 0),
+                    taxAmt: Number(inv.tax || 0), grandTotal: Number(inv.total || 0), notes: inv.notes || '', status: inv.status || 'Draft'
+                };
+            });
+            const pr = profileRes.data;
+            const profile = pr ? {
+                businessName: pr.business_name || '', regNumber: pr.registration_no || '', address: pr.address || '', phone: pr.phone || '', email: pr.email || '', website: pr.website || '',
+                bankName: pr.bank_name || '', accountName: pr.bank_account_name || '', accountNumber: pr.bank_account_no || '', logo: pr.logo_url || ''
+            } : { businessName:'', regNumber:'', address:'', phone:'', email:'', website:'', bankName:'', accountName:'', accountNumber:'', logo:'' };
+
+            suppressCloudSync = true;
+            setStore(STORAGE_KEYS.PROFILE, profile);
+            setStore(STORAGE_KEYS.CUSTOMERS, customers);
+            setStore(STORAGE_KEYS.QUOTATIONS, quotations);
+            setStore(STORAGE_KEYS.INVOICES, invoices);
+            setStore(STORAGE_KEYS.QT_SEQ, nextSequence(quotations, 'QT'));
+            setStore(STORAGE_KEYS.INV_SEQ, nextSequence(invoices, 'INV'));
+            suppressCloudSync = false;
+            setCloudStatus('Synced');
+        }
+
+        function setCloudStatus(text) {
+            const el = document.getElementById('cloud-status');
+            if (el) el.textContent = text;
+        }
+
+        function setAuthMessage(message, type = 'info') {
+            const el = document.getElementById('auth-message');
+            if (!el) return;
+            el.textContent = message;
+            el.className = 'text-sm rounded-xl px-3 py-2 ' + (type === 'error' ? 'bg-red-50 text-red-700' : type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700');
+            el.classList.remove('hidden');
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const btn = document.getElementById('auth-login-btn');
+            btn.disabled = true; btn.textContent = 'Signing in…';
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            btn.disabled = false; btn.textContent = 'Log In';
+            if (error) setAuthMessage(error.message, 'error');
+        }
+
+        async function handleSignup() {
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            if (!email || password.length < 8) { setAuthMessage('Use a valid email and a password with at least 8 characters.', 'error'); return; }
+            const btn = document.getElementById('auth-signup-btn');
+            btn.disabled = true; btn.textContent = 'Creating…';
+            const { data, error } = await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: 'https://quote-flow-theta.vercel.app' } });
+            btn.disabled = false; btn.textContent = 'Create Account';
+            if (error) return setAuthMessage(error.message, 'error');
+            if (!data.session) setAuthMessage('Account created. Check your email and confirm your account, then log in.', 'success');
+            else setAuthMessage('Account created successfully.', 'success');
+        }
+
+        async function logoutQuoteFlow() {
+            await supabaseClient.auth.signOut();
+        }
+
+        function showAuthScreen(show) {
+            const screen = document.getElementById('auth-screen');
+            if (screen) screen.classList.toggle('hidden', !show);
+            document.body.classList.toggle('overflow-hidden', show);
+        }
+
+        async function handleSession(session) {
+            currentUser = session?.user || null;
+            if (!currentUser) {
+                cloudReady = false;
+                showAuthScreen(true);
+                setCloudStatus('Offline');
+                return;
+            }
+            showAuthScreen(false);
+            const emailEls = document.querySelectorAll('[data-user-email]');
+            emailEls.forEach(el => el.textContent = currentUser.email || 'Account');
+            try {
+                await loadCloudState();
+                if (typeof switchTab === 'function') switchTab('dashboard');
+            } catch (err) {
+                console.error(err);
+                setCloudStatus('Sync error');
+                if (typeof showToast === 'function') showToast('Could not load cloud data. Please refresh and try again.', 'error');
+            }
+        }
+
+        // Initialize empty local cache if none exists (No demo data)
+        if (!localStorage.getItem(STORAGE_KEYS.CUSTOMERS)) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, '[]');
+        if (!localStorage.getItem(STORAGE_KEYS.QUOTATIONS)) localStorage.setItem(STORAGE_KEYS.QUOTATIONS, '[]');
+        if (!localStorage.getItem(STORAGE_KEYS.INVOICES)) localStorage.setItem(STORAGE_KEYS.INVOICES, '[]');
+        if (!localStorage.getItem(STORAGE_KEYS.PROFILE)) localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify({ businessName:'', regNumber:'', address:'', phone:'', email:'', website:'', bankName:'', accountName:'', accountNumber:'', logo:'' }));
+        if (!localStorage.getItem(STORAGE_KEYS.QT_SEQ)) localStorage.setItem(STORAGE_KEYS.QT_SEQ, '1');
+        if (!localStorage.getItem(STORAGE_KEYS.INV_SEQ)) localStorage.setItem(STORAGE_KEYS.INV_SEQ, '1');
     </script>
+
+    <!-- Authentication Screen -->
+    <div id="auth-screen" class="fixed inset-0 z-[100] bg-slate-50 flex items-center justify-center p-4 no-print">
+        <div class="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-xl p-7 sm:p-8">
+            <div class="flex items-center space-x-3 mb-7">
+                <div class="w-12 h-12 rounded-xl bg-brand-600 flex items-center justify-center text-white font-bold text-xl shadow-md">QF</div>
+                <div><h1 class="text-2xl font-bold text-slate-900">QuoteFlow</h1><p class="text-sm text-slate-500">Work Smarter. Quote Faster.</p></div>
+            </div>
+            <h2 class="text-xl font-bold text-slate-900">Welcome</h2>
+            <p class="text-sm text-slate-500 mt-1 mb-5">Log in to access your quotations, invoices and customers securely.</p>
+            <div id="auth-message" class="hidden mb-4"></div>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Email</label><input id="auth-email" type="email" required autocomplete="email" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600"></div>
+                <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Password</label><input id="auth-password" type="password" required minlength="8" autocomplete="current-password" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-600"><p class="text-xs text-slate-400 mt-1">Minimum 8 characters</p></div>
+                <button id="auth-login-btn" type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl shadow-sm transition-colors">Log In</button>
+                <button id="auth-signup-btn" type="button" onclick="handleSignup()" class="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold py-3 rounded-xl transition-colors">Create Account</button>
+            </form>
+        </div>
+    </div>
 
     <!-- Desktop & Mobile Top Header -->
     <header class="bg-white border-b border-slate-200 sticky top-0 z-40 no-print">
@@ -253,6 +573,11 @@
             </nav>
 
             <div class="flex items-center space-x-3">
+                <div class="hidden lg:flex items-center space-x-2 text-xs text-slate-500">
+                    <span id="cloud-status" class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">Loading…</span>
+                    <span data-user-email class="max-w-[180px] truncate"></span>
+                    <button onclick="logoutQuoteFlow()" class="text-slate-500 hover:text-red-600 font-semibold">Log out</button>
+                </div>
                 <button onclick="openCreateQuotationModal()" class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all flex items-center space-x-2">
                     <i class="fa-solid fa-plus"></i>
                     <span>Create Quotation</span>
@@ -589,6 +914,10 @@
                         <i class="fa-solid fa-building"></i>
                     </div>
                     <span>Business Profile</span>
+                </button>
+                <button onclick="toggleMoreMenu(); logoutQuoteFlow();" class="w-full flex items-center space-x-4 p-3 rounded-xl hover:bg-red-50 text-red-600 font-medium">
+                    <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center"><i class="fa-solid fa-right-from-bracket"></i></div>
+                    <div class="text-left"><span class="block">Log out</span><span data-user-email class="block text-xs text-slate-400 font-normal"></span></div>
                 </button>
             </div>
         </div>
@@ -1167,7 +1496,7 @@
             const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
 
             const customerData = {
-                id: id || 'CUST-' + Date.now(),
+                id: id || crypto.randomUUID(),
                 name: document.getElementById('cust-name').value,
                 company: document.getElementById('cust-company').value,
                 phone: document.getElementById('cust-phone').value,
@@ -1499,7 +1828,7 @@
             let number = document.getElementById('qt-number').value;
 
             const quotationData = {
-                id: id || 'QT-' + Date.now(),
+                id: id || crypto.randomUUID(),
                 number,
                 date: document.getElementById('qt-date').value,
                 validUntil: document.getElementById('qt-valid-until').value,
@@ -1555,7 +1884,7 @@
 
             const newQ = {
                 ...q,
-                id: 'QT-' + Date.now(),
+                id: crypto.randomUUID(),
                 number: newNumber,
                 date: new Date().toISOString().split('T')[0],
                 status: 'Draft'
@@ -1843,7 +2172,7 @@
             let number = document.getElementById('inv-number').value;
 
             const invoiceData = {
-                id: id || 'INV-' + Date.now(),
+                id: id || crypto.randomUUID(),
                 number,
                 date: document.getElementById('inv-date').value,
                 dueDate: document.getElementById('inv-duedate').value,
@@ -1895,11 +2224,12 @@
 
             const invoices = getStore(STORAGE_KEYS.INVOICES, []);
             const newInv = {
-                id: 'INV-' + Date.now(),
+                id: crypto.randomUUID(),
                 number: newInvNumber,
                 date: new Date().toISOString().split('T')[0],
                 dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 customerId: q.customerId,
+                sourceQuotationId: q.id,
                 customerName: q.customerName,
                 customerCompany: q.customerCompany,
                 customerPhone: q.customerPhone,
@@ -2220,8 +2550,12 @@
         }
 
         // --- INITIALIZATION ON WINDOW LOAD ---
-        window.onload = function() {
-            switchTab('dashboard');
+        window.onload = async function() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            await handleSession(session);
+            supabaseClient.auth.onAuthStateChange((_event, newSession) => {
+                setTimeout(() => handleSession(newSession), 0);
+            });
         };
     </script>
 

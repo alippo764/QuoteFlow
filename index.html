@@ -1648,7 +1648,11 @@
                                         <td class="p-4 text-slate-500">${formatDate(q.date)}</td>
                                         <td class="p-4 text-slate-500">${formatDate(q.validUntil)}</td>
                                         <td class="p-4 font-bold text-slate-900">${formatRM(q.grandTotal)}</td>
-                                        <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor}">${q.status}</span></td>
+                                        <td class="p-4">
+<select onchange="updateQuotationStatus('${q.id}', this.value)" class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor} bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-600">
+${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value="${status}" ${q.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+</select>
+</td>
                                         <td class="p-4 text-right space-x-1">
                                             <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
                                             <button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
@@ -1663,6 +1667,19 @@
                     </table>
                 </div>
             `;
+        }
+
+        function updateQuotationStatus(id, status) {
+            const allowedStatuses = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired'];
+            if (!allowedStatuses.includes(status)) return;
+            const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const q = quotations.find(x => x.id === id);
+            if (!q) return;
+            q.status = status;
+            setStore(STORAGE_KEYS.QUOTATIONS, quotations);
+            renderQuotations();
+            if (currentTab === 'dashboard') renderDashboard();
+            showToast(`Quotation status updated to ${status}`);
         }
 
         // Quotation Items Management inside form

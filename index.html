@@ -1592,7 +1592,6 @@
         // --- QUOTATIONS MANAGEMENT ---
         function renderQuotations() {
             const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
-            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
             const search = document.getElementById('search-quotations').value.toLowerCase();
             const statusFilter = document.getElementById('filter-quotation-status').value;
             const container = document.getElementById('quotations-container');
@@ -1636,8 +1635,6 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-sm">
                             ${filtered.map(q => {
-                                const linkedInvoice = invoices.find(inv => inv.sourceQuotationId === q.id);
-                                const isConverted = Boolean(linkedInvoice);
                                 let badgeColor = 'bg-slate-100 text-slate-700';
                                 if (q.status === 'Sent') badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200';
                                 if (q.status === 'Accepted') badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
@@ -1658,13 +1655,9 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
 </td>
                                         <td class="p-4 text-right space-x-1">
                                             <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
-                                            ${isConverted
-                                                ? `<button type="button" title="Locked after conversion" class="p-2 text-slate-300 rounded-lg cursor-not-allowed" disabled><i class="fa-solid fa-lock"></i></button>`
-                                                : `<button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>`}
+                                            <button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
                                             <button onclick="duplicateQuotation('${q.id}')" title="Duplicate" class="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-copy"></i></button>
-                                            ${isConverted
-                                                ? `<button onclick="previewDocument('invoice', '${linkedInvoice.id}')" title="View Invoice ${linkedInvoice.number}" class="p-2 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50"><i class="fa-solid fa-file-invoice-dollar"></i></button>`
-                                                : (q.status === 'Accepted' ? `<button onclick="convertQuotationToInvoice('${q.id}')" title="Convert to Invoice" class="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-file-invoice-dollar"></i></button>` : '')}
+                                            ${q.status === 'Accepted' ? `<button onclick="convertQuotationToInvoice('${q.id}')" title="Convert to Invoice" class="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-file-invoice-dollar"></i></button>` : ''}
                                             <button onclick="confirmDeleteQuotation('${q.id}')" title="Delete" class="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
@@ -1795,13 +1788,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
 
             if (id) {
                 const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
-                const invoices = getStore(STORAGE_KEYS.INVOICES, []);
                 const q = quotations.find(x => x.id === id);
-                const linkedInvoice = invoices.find(inv => inv.sourceQuotationId === id);
-                if (linkedInvoice) {
-                    showToast(`This quotation is locked because it has been converted to ${linkedInvoice.number}.`, 'info');
-                    return;
-                }
                 if (q) {
                     document.getElementById('quotation-modal-title').innerText = 'Edit Quotation';
                     document.getElementById('qt-id').value = q.id;
@@ -2288,18 +2275,11 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             const q = quotations.find(x => x.id === quotationId);
             if (!q) return;
 
-            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
-            const existingInvoice = invoices.find(inv => inv.sourceQuotationId === quotationId);
-            if (existingInvoice) {
-                showToast(`This quotation has already been converted to ${existingInvoice.number}.`, 'info');
-                switchTab('invoices');
-                return;
-            }
-
             let seq = getStore(STORAGE_KEYS.INV_SEQ, 1);
             const newInvNumber = 'INV-' + String(seq).padStart(4, '0');
             setStore(STORAGE_KEYS.INV_SEQ, seq + 1);
 
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
             const newInv = {
                 id: crypto.randomUUID(),
                 number: newInvNumber,

@@ -65,6 +65,26 @@
             margin: 0;
         }
 
+
+        /* Desktop/laptop preview: keep toolbar visible and scroll only the document area.
+           Mobile behaviour is intentionally left unchanged. */
+        @media (min-width: 640px) {
+            #document-preview-modal > div {
+                overflow: hidden;
+            }
+
+            #document-preview-modal .no-print {
+                flex: 0 0 auto;
+            }
+
+            #print-preview-viewport {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+        }
+
         @media print {
             @page {
                 size: A4;

@@ -65,26 +65,6 @@
             margin: 0;
         }
 
-
-        /* Desktop/laptop preview: keep toolbar visible and scroll only the document area.
-           Mobile behaviour is intentionally left unchanged. */
-        @media (min-width: 640px) {
-            #document-preview-modal > div {
-                overflow: hidden;
-            }
-
-            #document-preview-modal .no-print {
-                flex: 0 0 auto;
-            }
-
-            #print-preview-viewport {
-                flex: 1 1 auto;
-                min-height: 0;
-                overflow-y: auto;
-                overscroll-behavior: contain;
-            }
-        }
-
         @media print {
             @page {
                 size: A4;
@@ -986,7 +966,7 @@
     <!-- ================= MODALS & DOCUMENT VIEWER ================= -->
 
     <!-- Customer Modal -->
-    <div id="customer-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div id="customer-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between mb-4">
                 <h3 id="customer-modal-title" class="text-lg font-bold text-slate-900">Add Customer</h3>
@@ -1525,7 +1505,10 @@
             `).join('');
         }
 
-        function openCustomerModal(id = null) {
+        let quickCustomerFromQuotation = false;
+
+        function openCustomerModal(id = null, fromQuotation = false) {
+            quickCustomerFromQuotation = fromQuotation;
             document.getElementById('customer-form').reset();
             document.getElementById('cust-id').value = '';
             document.getElementById('customer-modal-title').innerText = 'Add Customer';
@@ -1574,9 +1557,20 @@
             }
 
             setStore(STORAGE_KEYS.CUSTOMERS, customers);
+
+            const wasQuickCustomer = quickCustomerFromQuotation && !id;
             closeCustomerModal();
             renderCustomers();
-            if (currentTab === 'quotations' || currentTab === 'invoices') populateCustomerDropdowns();
+            if (currentTab === 'quotations' || currentTab === 'invoices') populateCustomerDropdowns(wasQuickCustomer ? customerData.id : '');
+
+            if (wasQuickCustomer) {
+                const qtSelect = document.getElementById('qt-customer-select');
+                if (qtSelect) {
+                    qtSelect.value = customerData.id;
+                    if (typeof handleQuotationCustomerChange === 'function') handleQuotationCustomerChange();
+                }
+            }
+            quickCustomerFromQuotation = false;
         }
 
         function editCustomer(id) {
@@ -1606,12 +1600,13 @@
 
         // Quick add customer from quotation modal
         function openQuickCustomerModal() {
-            openCustomerModal();
+            openCustomerModal(null, true);
         }
 
         // --- QUOTATIONS MANAGEMENT ---
         function renderQuotations() {
             const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
             const search = document.getElementById('search-quotations').value.toLowerCase();
             const statusFilter = document.getElementById('filter-quotation-status').value;
             const container = document.getElementById('quotations-container');
@@ -1639,8 +1634,60 @@
                 return;
             }
 
+            const mobileCardsHtml = filtered.map(q => {
+                const linkedInvoice = invoices.find(inv => inv.sourceQuotationId === q.id);
+                const isConverted = Boolean(linkedInvoice);
+                let badgeColor = 'bg-slate-100 text-slate-700';
+                if (q.status === 'Sent') badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200';
+                if (q.status === 'Accepted') badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                if (q.status === 'Rejected') badgeColor = 'bg-red-50 text-red-700 border border-red-200';
+                if (q.status === 'Expired') badgeColor = 'bg-slate-100 text-slate-600 border border-slate-300';
+
+                return `
+                    <div class="p-4 border-b border-slate-100 last:border-b-0">
+                        <div class="flex items-start justify-between gap-3 mb-3">
+                            <div class="min-w-0">
+                                <div class="font-bold text-slate-900">${q.number}</div>
+                                <div class="text-sm font-medium text-slate-700 truncate mt-0.5">${q.customerName}</div>
+                            </div>
+                            <select onchange="updateQuotationStatus('${q.id}', this.value)" class="shrink-0 max-w-[118px] px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor} bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-600">
+                                ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value="${status}" ${q.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                            <div>
+                                <div class="text-[11px] uppercase tracking-wide font-bold text-slate-400">Date</div>
+                                <div class="text-slate-600 mt-0.5">${formatDate(q.date)}</div>
+                            </div>
+                            <div>
+                                <div class="text-[11px] uppercase tracking-wide font-bold text-slate-400">Valid Until</div>
+                                <div class="text-slate-600 mt-0.5">${formatDate(q.validUntil)}</div>
+                            </div>
+                            <div class="col-span-2">
+                                <div class="text-[11px] uppercase tracking-wide font-bold text-slate-400">Amount</div>
+                                <div class="font-bold text-slate-900 mt-0.5">${formatRM(q.grandTotal)}</div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-1 mt-3 pt-3 border-t border-slate-100">
+                            <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-eye"></i></button>
+                            ${isConverted
+                                ? `<button type="button" title="Locked after conversion" class="w-9 h-9 inline-flex items-center justify-center text-slate-300 rounded-lg bg-slate-50 cursor-not-allowed" disabled><i class="fa-solid fa-lock"></i></button>`
+                                : `<button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-pen"></i></button>`}
+                            <button onclick="duplicateQuotation('${q.id}')" title="Duplicate" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-indigo-600 rounded-lg bg-slate-50"><i class="fa-solid fa-copy"></i></button>
+                            ${isConverted
+                                ? `<button onclick="previewDocument('invoice', '${linkedInvoice.id}')" title="View Invoice ${linkedInvoice.number}" class="w-9 h-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-700 rounded-lg bg-emerald-50"><i class="fa-solid fa-file-invoice-dollar"></i></button>`
+                                : (q.status === 'Accepted' ? `<button onclick="convertQuotationToInvoice('${q.id}')" title="Convert to Invoice" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-emerald-600 rounded-lg bg-slate-50"><i class="fa-solid fa-file-invoice-dollar"></i></button>` : '')}
+                            <button onclick="confirmDeleteQuotation('${q.id}')" title="Delete" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-red-600 rounded-lg bg-slate-50"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
             container.innerHTML = `
-                <div class="overflow-x-auto">
+                <div class="md:hidden">${mobileCardsHtml}</div>
+                <div class="hidden md:block overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-200 text-slate-400 text-xs font-bold uppercase tracking-wider">
@@ -1655,6 +1702,8 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-sm">
                             ${filtered.map(q => {
+                                const linkedInvoice = invoices.find(inv => inv.sourceQuotationId === q.id);
+                                const isConverted = Boolean(linkedInvoice);
                                 let badgeColor = 'bg-slate-100 text-slate-700';
                                 if (q.status === 'Sent') badgeColor = 'bg-amber-50 text-amber-700 border border-amber-200';
                                 if (q.status === 'Accepted') badgeColor = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
@@ -1675,9 +1724,13 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
 </td>
                                         <td class="p-4 text-right space-x-1">
                                             <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
-                                            <button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
+                                            ${isConverted
+                                                ? `<button type="button" title="Locked after conversion" class="p-2 text-slate-300 rounded-lg cursor-not-allowed" disabled><i class="fa-solid fa-lock"></i></button>`
+                                                : `<button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>`}
                                             <button onclick="duplicateQuotation('${q.id}')" title="Duplicate" class="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-copy"></i></button>
-                                            ${q.status === 'Accepted' ? `<button onclick="convertQuotationToInvoice('${q.id}')" title="Convert to Invoice" class="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-file-invoice-dollar"></i></button>` : ''}
+                                            ${isConverted
+                                                ? `<button onclick="previewDocument('invoice', '${linkedInvoice.id}')" title="View Invoice ${linkedInvoice.number}" class="p-2 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50"><i class="fa-solid fa-file-invoice-dollar"></i></button>`
+                                                : (q.status === 'Accepted' ? `<button onclick="convertQuotationToInvoice('${q.id}')" title="Convert to Invoice" class="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-file-invoice-dollar"></i></button>` : '')}
                                             <button onclick="confirmDeleteQuotation('${q.id}')" title="Delete" class="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
@@ -1808,7 +1861,13 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
 
             if (id) {
                 const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
+                const invoices = getStore(STORAGE_KEYS.INVOICES, []);
                 const q = quotations.find(x => x.id === id);
+                const linkedInvoice = invoices.find(inv => inv.sourceQuotationId === id);
+                if (linkedInvoice) {
+                    showToast(`This quotation is locked because it has been converted to ${linkedInvoice.number}.`, 'info');
+                    return;
+                }
                 if (q) {
                     document.getElementById('quotation-modal-title').innerText = 'Edit Quotation';
                     document.getElementById('qt-id').value = q.id;
@@ -2295,11 +2354,18 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             const q = quotations.find(x => x.id === quotationId);
             if (!q) return;
 
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const existingInvoice = invoices.find(inv => inv.sourceQuotationId === quotationId);
+            if (existingInvoice) {
+                showToast(`This quotation has already been converted to ${existingInvoice.number}.`, 'info');
+                switchTab('invoices');
+                return;
+            }
+
             let seq = getStore(STORAGE_KEYS.INV_SEQ, 1);
             const newInvNumber = 'INV-' + String(seq).padStart(4, '0');
             setStore(STORAGE_KEYS.INV_SEQ, seq + 1);
 
-            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
             const newInv = {
                 id: crypto.randomUUID(),
                 number: newInvNumber,
@@ -2356,7 +2422,13 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             document.getElementById('stat-total-amount').innerText = formatRM(totalQuotedAmount);
 
             const recentContainer = document.getElementById('dashboard-recent-quotations');
-            const recent = [...quotations].reverse().slice(0, 5);
+            const recent = [...quotations]
+                .sort((a, b) => {
+                    const aNum = parseInt(String(a.number || '').replace(/\D/g, ''), 10) || 0;
+                    const bNum = parseInt(String(b.number || '').replace(/\D/g, ''), 10) || 0;
+                    return bNum - aNum;
+                })
+                .slice(0, 5);
 
             if (recent.length === 0) {
                 recentContainer.innerHTML = `

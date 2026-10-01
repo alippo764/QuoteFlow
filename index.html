@@ -1561,7 +1561,9 @@
             const wasQuickCustomer = quickCustomerFromQuotation && !id;
             closeCustomerModal();
             renderCustomers();
-            if (currentTab === 'quotations' || currentTab === 'invoices') populateCustomerDropdowns(wasQuickCustomer ? customerData.id : '');
+            // Always refresh customer dropdowns after saving. This also fixes Quick Add
+            // when Create Quotation was opened from Dashboard (currentTab is still dashboard).
+            populateCustomerDropdowns(wasQuickCustomer ? customerData.id : '');
 
             if (wasQuickCustomer) {
                 const qtSelect = document.getElementById('qt-customer-select');

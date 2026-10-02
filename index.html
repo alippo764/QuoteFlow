@@ -1678,9 +1678,7 @@
 
                         <div class="flex items-center justify-end gap-1 mt-3 pt-3 border-t border-slate-100">
                             <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-eye"></i></button>
-                            ${isConverted
-                                ? `<button type="button" title="Locked after conversion" class="w-9 h-9 inline-flex items-center justify-center text-slate-300 rounded-lg bg-slate-50 cursor-not-allowed" disabled><i class="fa-solid fa-lock"></i></button>`
-                                : `<button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-pen"></i></button>`}
+                            <button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-pen"></i></button>
                             <button onclick="duplicateQuotation('${q.id}')" title="Duplicate" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-indigo-600 rounded-lg bg-slate-50"><i class="fa-solid fa-copy"></i></button>
                             ${isConverted
                                 ? `<button onclick="previewDocument('invoice', '${linkedInvoice.id}')" title="View Invoice ${linkedInvoice.number}" class="w-9 h-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-700 rounded-lg bg-emerald-50"><i class="fa-solid fa-file-invoice-dollar"></i></button>`
@@ -1730,9 +1728,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
 </td>
                                         <td class="p-4 text-right space-x-1">
                                             <button onclick="previewDocument('quotation', '${q.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
-                                            ${isConverted
-                                                ? `<button type="button" title="Locked after conversion" class="p-2 text-slate-300 rounded-lg cursor-not-allowed" disabled><i class="fa-solid fa-lock"></i></button>`
-                                                : `<button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>`}
+                                            <button onclick="openCreateQuotationModal('${q.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
                                             <button onclick="duplicateQuotation('${q.id}')" title="Duplicate" class="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-copy"></i></button>
                                             ${isConverted
                                                 ? `<button onclick="previewDocument('invoice', '${linkedInvoice.id}')" title="View Invoice ${linkedInvoice.number}" class="p-2 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50"><i class="fa-solid fa-file-invoice-dollar"></i></button>`
@@ -1867,13 +1863,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
 
             if (id) {
                 const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
-                const invoices = getStore(STORAGE_KEYS.INVOICES, []);
                 const q = quotations.find(x => x.id === id);
-                const linkedInvoice = invoices.find(inv => inv.sourceQuotationId === id);
-                if (linkedInvoice) {
-                    showToast(`This quotation is locked because it has been converted to ${linkedInvoice.number}.`, 'info');
-                    return;
-                }
                 if (q) {
                     document.getElementById('quotation-modal-title').innerText = 'Edit Quotation';
                     document.getElementById('qt-id').value = q.id;

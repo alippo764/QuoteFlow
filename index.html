@@ -217,7 +217,7 @@
         function setStore(key, value) {
             try {
                 localStorage.setItem(key, JSON.stringify(value));
-                if (!suppressCloudSync && cloudReady && currentUser && [STORAGE_KEYS.PROFILE, STORAGE_KEYS.CUSTOMERS, STORAGE_KEYS.QUOTATIONS, STORAGE_KEYS.INVOICES].includes(key)) {
+                if (!suppressCloudSync && cloudReady && currentUser && [STORAGE_KEYS.PROFILE, STORAGE_KEYS.CUSTOMERS, STORAGE_KEYS.QUOTATIONS, STORAGE_KEYS.INVOICES, STORAGE_KEYS.RECEIPTS].includes(key)) {
                     scheduleCloudSync();
                 }
             } catch (e) {
@@ -233,6 +233,7 @@
             let customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
             let quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
             let invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            let receipts = getStore(STORAGE_KEYS.RECEIPTS, []);
             const customerMap = new Map();
             const quoteMap = new Map();
 
@@ -255,10 +256,17 @@
                 sourceQuotationId: quoteMap.get(inv.sourceQuotationId) || inv.sourceQuotationId || null
             }));
 
+            receipts = receipts.map(rc => ({
+                ...rc,
+                id: isUuid(rc.id) ? rc.id : crypto.randomUUID(),
+                customerId: customerMap.get(rc.customerId) || rc.customerId || null
+            }));
+
             suppressCloudSync = true;
             setStore(STORAGE_KEYS.CUSTOMERS, customers);
             setStore(STORAGE_KEYS.QUOTATIONS, quotations);
             setStore(STORAGE_KEYS.INVOICES, invoices);
+            setStore(STORAGE_KEYS.RECEIPTS, receipts);
             suppressCloudSync = false;
         }
 
@@ -314,6 +322,7 @@
             const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
             const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
             const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const receipts = getStore(STORAGE_KEYS.RECEIPTS, []);
             const customerIds = new Set(customers.map(c => c.id));
             const quotationIds = new Set(quotations.map(q => q.id));
 
@@ -330,6 +339,11 @@
 
             // Full per-user snapshot sync. Delete children first to satisfy FKs.
             let r;
+            const ownedReceipts = await supabaseClient.from('receipts').select('id').eq('user_id', userId);
+            if (ownedReceipts.error) throw ownedReceipts.error;
+            const ownedReceiptIds = (ownedReceipts.data || []).map(x => x.id);
+            if (ownedReceiptIds.length) { r = await supabaseClient.from('receipt_items').delete().in('receipt_id', ownedReceiptIds); if (r.error) throw r.error; }
+            r = await supabaseClient.from('receipts').delete().eq('user_id', userId); if (r.error) throw r.error;
             r = await supabaseClient.from('invoice_items').delete().eq('user_id', userId); if (r.error) throw r.error;
             r = await supabaseClient.from('invoices').delete().eq('user_id', userId); if (r.error) throw r.error;
             r = await supabaseClient.from('quotation_items').delete().eq('user_id', userId); if (r.error) throw r.error;
@@ -371,6 +385,19 @@
                 })));
                 if (itemRows.length) { r = await supabaseClient.from('invoice_items').insert(itemRows); if (r.error) throw r.error; }
             }
+
+            if (receipts.length) {
+                const rows = receipts.map(rc => ({
+                    id: rc.id, user_id: userId, receipt_number: rc.number, customer_id: customerIds.has(rc.customerId) ? rc.customerId : null,
+                    receipt_date: rc.date || null, payment_method: rc.paymentMethod || '', payment_reference: '', notes: rc.notes || '',
+                    source_invoice_id: isUuid(rc.sourceInvoiceId) ? rc.sourceInvoiceId : null, subtotal: rc.subtotal || rc.grandTotal || 0, total: rc.grandTotal || 0, updated_at: new Date().toISOString()
+                }));
+                r = await supabaseClient.from('receipts').insert(rows); if (r.error) throw r.error;
+                const itemRows = receipts.flatMap(rc => (rc.items || []).map(item => ({
+                    receipt_id: rc.id, description: item.description || '', quantity: item.qty || 0, unit: item.unit || '', unit_price: item.price || 0, amount: (item.qty || 0) * (item.price || 0)
+                })));
+                if (itemRows.length) { r = await supabaseClient.from('receipt_items').insert(itemRows); if (r.error) throw r.error; }
+            }
             setCloudStatus('Synced');
         }
 
@@ -387,19 +414,21 @@
             if (!currentUser) return;
             setCloudStatus('Loading…');
             const userId = currentUser.id;
-            const [profileRes, customersRes, quotesRes, quoteItemsRes, invoicesRes, invoiceItemsRes] = await Promise.all([
+            const [profileRes, customersRes, quotesRes, quoteItemsRes, invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
                 supabaseClient.from('business_profiles').select('*').eq('user_id', userId).maybeSingle(),
                 supabaseClient.from('customers').select('*').eq('user_id', userId).order('created_at'),
                 supabaseClient.from('quotations').select('*').eq('user_id', userId).order('created_at'),
                 supabaseClient.from('quotation_items').select('*').eq('user_id', userId).order('sort_order'),
                 supabaseClient.from('invoices').select('*').eq('user_id', userId).order('created_at'),
-                supabaseClient.from('invoice_items').select('*').eq('user_id', userId).order('sort_order')
+                supabaseClient.from('invoice_items').select('*').eq('user_id', userId).order('sort_order'),
+                supabaseClient.from('receipts').select('*').eq('user_id', userId).order('created_at'),
+                supabaseClient.from('receipt_items').select('*')
             ]);
-            const errors = [profileRes.error, customersRes.error, quotesRes.error, quoteItemsRes.error, invoicesRes.error, invoiceItemsRes.error].filter(Boolean);
+            const errors = [profileRes.error, customersRes.error, quotesRes.error, quoteItemsRes.error, invoicesRes.error, invoiceItemsRes.error, receiptsRes.error, receiptItemsRes.error].filter(Boolean);
             if (errors.length) throw errors[0];
 
-            const cloudHasData = !!profileRes.data || (customersRes.data?.length || 0) + (quotesRes.data?.length || 0) + (invoicesRes.data?.length || 0) > 0;
-            const localHasData = getStore(STORAGE_KEYS.CUSTOMERS, []).length || getStore(STORAGE_KEYS.QUOTATIONS, []).length || getStore(STORAGE_KEYS.INVOICES, []).length || getStore(STORAGE_KEYS.PROFILE, {}).businessName;
+            const cloudHasData = !!profileRes.data || (customersRes.data?.length || 0) + (quotesRes.data?.length || 0) + (invoicesRes.data?.length || 0) + (receiptsRes.data?.length || 0) > 0;
+            const localHasData = getStore(STORAGE_KEYS.CUSTOMERS, []).length || getStore(STORAGE_KEYS.QUOTATIONS, []).length || getStore(STORAGE_KEYS.INVOICES, []).length || getStore(STORAGE_KEYS.RECEIPTS, []).length || getStore(STORAGE_KEYS.PROFILE, {}).businessName;
 
             cloudReady = true;
             if (!cloudHasData && localHasData) {
@@ -415,6 +444,9 @@
             for (const item of quoteItemsRes.data || []) (qItems[item.quotation_id] ||= []).push({ description: item.description || '', qty: Number(item.quantity || 0), unit: item.unit || '', price: Number(item.unit_price || 0) });
             const invItems = {};
             for (const item of invoiceItemsRes.data || []) (invItems[item.invoice_id] ||= []).push({ description: item.description || '', qty: Number(item.quantity || 0), unit: item.unit || '', price: Number(item.unit_price || 0) });
+            const receiptIds = new Set((receiptsRes.data || []).map(r => r.id));
+            const rcItems = {};
+            for (const item of receiptItemsRes.data || []) if (receiptIds.has(item.receipt_id)) (rcItems[item.receipt_id] ||= []).push({ description: item.description || '', qty: Number(item.quantity || 0), unit: item.unit || '', price: Number(item.unit_price || 0) });
 
             const quotations = (quotesRes.data || []).map(q => {
                 const meta = safeJson(q.terms, {}); const c = meta.customerSnapshot || customerById[q.customer_id] || {};
@@ -436,6 +468,15 @@
                     taxAmt: Number(inv.tax || 0), grandTotal: Number(inv.total || 0), notes: inv.notes || '', status: inv.status || 'Draft'
                 };
             });
+            const receipts = (receiptsRes.data || []).map(rc => {
+                const c = customerById[rc.customer_id] || {};
+                return {
+                    id: rc.id, number: rc.receipt_number, date: rc.receipt_date || '', customerId: rc.customer_id || '', sourceInvoiceId: rc.source_invoice_id || '',
+                    customerName: c.name || '', customerCompany: c.company || '', customerPhone: c.phone || '', customerEmail: c.email || '', customerAddress: c.address || '',
+                    items: rcItems[rc.id] || [], subtotal: Number(rc.subtotal || 0), discountAmt: 0, taxAmt: 0, taxPercent: 0, grandTotal: Number(rc.total || 0),
+                    paymentMethod: rc.payment_method || '', notes: rc.notes || ''
+                };
+            });
             const pr = profileRes.data;
             const profile = pr ? {
                 businessName: pr.business_name || '', regNumber: pr.registration_no || '', address: pr.address || '', phone: pr.phone || '', email: pr.email || '', website: pr.website || '',
@@ -447,8 +488,10 @@
             setStore(STORAGE_KEYS.CUSTOMERS, customers);
             setStore(STORAGE_KEYS.QUOTATIONS, quotations);
             setStore(STORAGE_KEYS.INVOICES, invoices);
+            setStore(STORAGE_KEYS.RECEIPTS, receipts);
             setStore(STORAGE_KEYS.QT_SEQ, nextSequence(quotations, 'QT'));
             setStore(STORAGE_KEYS.INV_SEQ, nextSequence(invoices, 'INV'));
+            setStore(STORAGE_KEYS.RC_SEQ, nextSequence(receipts, 'RC'));
             suppressCloudSync = false;
             setCloudStatus('Synced');
         }
@@ -558,6 +601,7 @@
         if (!localStorage.getItem(STORAGE_KEYS.PROFILE)) localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify({ businessName:'', regNumber:'', address:'', phone:'', email:'', website:'', bankName:'', accountName:'', accountNumber:'', logo:'' }));
         if (!localStorage.getItem(STORAGE_KEYS.QT_SEQ)) localStorage.setItem(STORAGE_KEYS.QT_SEQ, '1');
         if (!localStorage.getItem(STORAGE_KEYS.INV_SEQ)) localStorage.setItem(STORAGE_KEYS.INV_SEQ, '1');
+        if (!localStorage.getItem(STORAGE_KEYS.RC_SEQ)) localStorage.setItem(STORAGE_KEYS.RC_SEQ, '1');
     </script>
 
     <!-- Authentication Screen -->

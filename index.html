@@ -193,7 +193,9 @@
             QUOTATIONS: 'quoteflow_quotations',
             INVOICES: 'quoteflow_invoices',
             QT_SEQ: 'quoteflow_qt_seq',
-            INV_SEQ: 'quoteflow_inv_seq'
+            INV_SEQ: 'quoteflow_inv_seq',
+            RECEIPTS: 'quoteflow_receipts',
+            RC_SEQ: 'quoteflow_rc_seq'
         };
 
         let currentUser = null;
@@ -552,6 +554,7 @@
         if (!localStorage.getItem(STORAGE_KEYS.CUSTOMERS)) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, '[]');
         if (!localStorage.getItem(STORAGE_KEYS.QUOTATIONS)) localStorage.setItem(STORAGE_KEYS.QUOTATIONS, '[]');
         if (!localStorage.getItem(STORAGE_KEYS.INVOICES)) localStorage.setItem(STORAGE_KEYS.INVOICES, '[]');
+        if (!localStorage.getItem(STORAGE_KEYS.RECEIPTS)) localStorage.setItem(STORAGE_KEYS.RECEIPTS, '[]');
         if (!localStorage.getItem(STORAGE_KEYS.PROFILE)) localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify({ businessName:'', regNumber:'', address:'', phone:'', email:'', website:'', bankName:'', accountName:'', accountNumber:'', logo:'' }));
         if (!localStorage.getItem(STORAGE_KEYS.QT_SEQ)) localStorage.setItem(STORAGE_KEYS.QT_SEQ, '1');
         if (!localStorage.getItem(STORAGE_KEYS.INV_SEQ)) localStorage.setItem(STORAGE_KEYS.INV_SEQ, '1');
@@ -603,6 +606,9 @@
                 </button>
                 <button onclick="switchTab('invoices')" id="nav-invoices" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
                     Invoices
+                </button>
+                <button onclick="switchTab('receipts')" id="nav-receipts" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
+                    Receipts
                 </button>
                 <button onclick="switchTab('customers')" id="nav-customers" class="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100">
                     Customers
@@ -798,6 +804,29 @@
             </div>
         </section>
 
+
+        <!-- ================= VIEW: RECEIPTS ================= -->
+        <section id="view-receipts" class="space-y-6 hidden">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Receipts</h1>
+                    <p class="text-sm text-slate-500 mt-1">Create receipts directly or convert a paid invoice.</p>
+                </div>
+                <button onclick="openReceiptModal()" class="inline-flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                    <i class="fa-solid fa-plus"></i><span>Create Receipt</span>
+                </button>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                <div class="relative w-full sm:w-80">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="fa-solid fa-magnifying-glass"></i></span>
+                    <input type="text" id="search-receipts" oninput="renderReceipts()" placeholder="Search receipts..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white">
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div id="receipts-container"></div>
+            </div>
+        </section>
+
         <!-- ================= VIEW: CUSTOMERS ================= -->
         <section id="view-customers" class="space-y-6 hidden">
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -943,6 +972,10 @@
             <div class="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mb-2"></div>
             <h3 class="font-bold text-slate-900 text-lg mb-2">More Options</h3>
             <div class="space-y-2">
+                <button onclick="switchTab('receipts'); toggleMoreMenu();" class="w-full flex items-center space-x-4 p-3 rounded-xl hover:bg-slate-50 text-slate-700 font-medium">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><i class="fa-solid fa-receipt"></i></div>
+                    <span>Receipts</span>
+                </button>
                 <button onclick="switchTab('customers'); toggleMoreMenu();" class="w-full flex items-center space-x-4 p-3 rounded-xl hover:bg-slate-50 text-slate-700 font-medium">
                     <div class="w-10 h-10 rounded-xl bg-blue-50 text-brand-600 flex items-center justify-center">
                         <i class="fa-solid fa-users"></i>
@@ -1249,7 +1282,34 @@
         </div>
     </div>
 
-    <!-- Document Preview & Print Modal (Quotation / Invoice A4 View) -->
+
+    <!-- Receipt Form Modal -->
+    <div id="receipt-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-slate-100 p-6 sm:p-8 space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                <h3 id="receipt-modal-title" class="text-xl font-bold text-slate-900">Create Receipt</h3>
+                <button onclick="closeReceiptModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <form id="receipt-form" onsubmit="saveReceipt(event)" class="space-y-6">
+                <input type="hidden" id="rc-id"><input type="hidden" id="rc-source-invoice">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Receipt Number</label><input id="rc-number" readonly class="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold"></div>
+                    <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Payment Date</label><input type="date" id="rc-date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
+                    <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Payment Method</label><select id="rc-method" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><option>Bank Transfer</option><option>Cash</option><option>QR Payment</option><option>Card</option><option>E-Wallet</option><option>Other</option></select></div>
+                </div>
+                <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Customer *</label><select id="rc-customer-select" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><option value="">Select Customer</option></select></div>
+                <div class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="flex items-center justify-between"><h4 class="font-bold text-slate-900">Items / Payment Details</h4><button type="button" onclick="addReceiptItemRow()" class="text-xs font-semibold bg-brand-50 text-brand-600 px-3 py-1.5 rounded-lg"><i class="fa-solid fa-plus"></i> Add Item</button></div>
+                    <div id="rc-items-container" class="space-y-3"></div>
+                </div>
+                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 flex justify-between items-center"><span class="font-bold text-slate-900">Amount Paid</span><span id="rc-total" class="text-xl font-extrabold text-brand-600">RM 0.00</span></div>
+                <div><label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Notes / Payment Reference</label><textarea id="rc-notes" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm" placeholder="e.g. Payment received in full"></textarea></div>
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-100"><button type="button" onclick="closeReceiptModal()" class="px-5 py-2.5 rounded-xl text-sm text-slate-600 hover:bg-slate-100">Cancel</button><button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-brand-600 text-white">Save Receipt</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Document Preview & Print Modal (Quotation / Invoice / Receipt A4 View) -->
     <div id="document-preview-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-6 hidden">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-slate-100 flex flex-col">
             <!-- Modal Header Toolbar -->
@@ -1286,7 +1346,7 @@
 
         function switchTab(tabId) {
             currentTab = tabId;
-            const tabs = ['dashboard', 'quotations', 'invoices', 'customers', 'profile'];
+            const tabs = ['dashboard', 'quotations', 'invoices', 'receipts', 'customers', 'profile'];
             
             tabs.forEach(t => {
                 const viewEl = document.getElementById(`view-${t}`);
@@ -1322,6 +1382,7 @@
             if (tabId === 'dashboard') renderDashboard();
             if (tabId === 'quotations') renderQuotations();
             if (tabId === 'invoices') renderInvoices();
+            if (tabId === 'receipts') renderReceipts();
             if (tabId === 'customers') renderCustomers();
             if (tabId === 'profile') loadProfileForm();
         }
@@ -2107,6 +2168,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
                         <div class="flex items-center justify-end gap-1 mt-3 pt-3 border-t border-slate-100">
                             <button onclick="previewDocument('invoice', '${inv.id}')" title="Preview" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-eye"></i></button>
                             <button onclick="openCreateInvoiceModal('${inv.id}')" title="Edit" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-brand-600 rounded-lg bg-slate-50"><i class="fa-solid fa-pen"></i></button>
+                            ${inv.status === 'Paid' ? `<button onclick="convertInvoiceToReceipt('${inv.id}')" title="Convert to Receipt" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-emerald-600 rounded-lg bg-slate-50"><i class="fa-solid fa-receipt"></i></button>` : ''}
                             <button onclick="confirmDeleteInvoice('${inv.id}')" title="Delete" class="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-red-600 rounded-lg bg-slate-50"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>
@@ -2146,6 +2208,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
                                         <td class="p-4 text-right space-x-1">
                                             <button onclick="previewDocument('invoice', '${inv.id}')" title="Preview" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
                                             <button onclick="openCreateInvoiceModal('${inv.id}')" title="Edit" class="p-2 text-slate-400 hover:text-brand-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-pen"></i></button>
+                                            ${inv.status === 'Paid' ? `<button onclick="convertInvoiceToReceipt('${inv.id}')" title="Convert to Receipt" class="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-receipt"></i></button>` : ''}
                                             <button onclick="confirmDeleteInvoice('${inv.id}')" title="Delete" class="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100"><i class="fa-solid fa-trash"></i></button>
                                         </td>
                                     </tr>
@@ -2449,6 +2512,111 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             });
         }
 
+
+        // --- RECEIPTS MANAGEMENT ---
+        function populateReceiptCustomerDropdown(selectedId = '') {
+            const select = document.getElementById('rc-customer-select');
+            if (!select) return;
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            select.innerHTML = '<option value="">Select Customer</option>' + customers.map(c => `<option value="${c.id}">${c.name}${c.company ? ' — ' + c.company : ''}</option>`).join('');
+            if (selectedId) select.value = selectedId;
+        }
+
+        function addReceiptItemRow(item = null) {
+            const container = document.getElementById('rc-items-container');
+            const div = document.createElement('div');
+            div.className = 'grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200/80 rc-item-row';
+            div.innerHTML = `
+                <div class="md:col-span-6"><label class="text-[10px] font-bold uppercase text-slate-400">Description</label><input required class="rc-desc w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm" value="${item?.description || ''}"></div>
+                <div class="md:col-span-2"><label class="text-[10px] font-bold uppercase text-slate-400">Qty</label><input type="number" min="0" step="0.01" required oninput="calculateReceiptTotal()" class="rc-qty w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm" value="${item?.qty ?? 1}"></div>
+                <div class="md:col-span-3"><label class="text-[10px] font-bold uppercase text-slate-400">Price</label><input type="number" min="0" step="0.01" required oninput="calculateReceiptTotal()" class="rc-price w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm" value="${item?.price ?? 0}"></div>
+                <div class="md:col-span-1 flex items-end"><button type="button" onclick="this.closest('.rc-item-row').remove(); calculateReceiptTotal();" class="w-full py-2 text-red-500"><i class="fa-solid fa-trash"></i></button></div>`;
+            container.appendChild(div);
+            calculateReceiptTotal();
+        }
+
+        function calculateReceiptTotal() {
+            let total = 0;
+            document.querySelectorAll('#rc-items-container .rc-item-row').forEach(r => total += (parseFloat(r.querySelector('.rc-qty').value)||0) * (parseFloat(r.querySelector('.rc-price').value)||0));
+            const el = document.getElementById('rc-total'); if (el) el.textContent = formatRM(total);
+            return total;
+        }
+
+        function openReceiptModal(id = null, sourceInvoice = null) {
+            document.getElementById('receipt-form').reset();
+            document.getElementById('rc-items-container').innerHTML = '';
+            document.getElementById('rc-id').value = '';
+            document.getElementById('rc-source-invoice').value = '';
+            document.getElementById('rc-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('receipt-modal-title').textContent = id ? 'Edit Receipt' : 'Create Receipt';
+            const receipts = getStore(STORAGE_KEYS.RECEIPTS, []);
+
+            if (sourceInvoice) {
+                let seq = getStore(STORAGE_KEYS.RC_SEQ, 1);
+                document.getElementById('rc-number').value = 'RC-' + String(seq).padStart(4,'0');
+                document.getElementById('rc-source-invoice').value = sourceInvoice.id;
+                populateReceiptCustomerDropdown(sourceInvoice.customerId);
+                document.getElementById('rc-notes').value = `Payment received for ${sourceInvoice.number}`;
+                (sourceInvoice.items || []).forEach(i => addReceiptItemRow(i));
+            } else if (id) {
+                const rc = receipts.find(r => r.id === id); if (!rc) return;
+                document.getElementById('rc-id').value = rc.id;
+                document.getElementById('rc-number').value = rc.number;
+                document.getElementById('rc-date').value = rc.date;
+                document.getElementById('rc-method').value = rc.paymentMethod || 'Bank Transfer';
+                document.getElementById('rc-source-invoice').value = rc.sourceInvoiceId || '';
+                document.getElementById('rc-notes').value = rc.notes || '';
+                populateReceiptCustomerDropdown(rc.customerId);
+                (rc.items || []).forEach(i => addReceiptItemRow(i));
+            } else {
+                let seq = getStore(STORAGE_KEYS.RC_SEQ, 1);
+                document.getElementById('rc-number').value = 'RC-' + String(seq).padStart(4,'0');
+                populateReceiptCustomerDropdown();
+                addReceiptItemRow();
+            }
+            calculateReceiptTotal();
+            document.getElementById('receipt-modal').classList.remove('hidden');
+        }
+        function closeReceiptModal(){ document.getElementById('receipt-modal').classList.add('hidden'); }
+
+        function saveReceipt(event) {
+            event.preventDefault();
+            const customerId = document.getElementById('rc-customer-select').value;
+            const customers = getStore(STORAGE_KEYS.CUSTOMERS, []);
+            const c = customers.find(x => x.id === customerId); if (!c) return showToast('Please select a customer','error');
+            const items = [...document.querySelectorAll('#rc-items-container .rc-item-row')].map(r => ({description:r.querySelector('.rc-desc').value.trim(), qty:parseFloat(r.querySelector('.rc-qty').value)||0, unit:'', price:parseFloat(r.querySelector('.rc-price').value)||0}));
+            if (!items.length) return showToast('Please add at least one item','error');
+            const receipts = getStore(STORAGE_KEYS.RECEIPTS, []);
+            const id = document.getElementById('rc-id').value;
+            const data = {id:id||crypto.randomUUID(), number:document.getElementById('rc-number').value, date:document.getElementById('rc-date').value, customerId, customerName:c.name||'', customerCompany:c.company||'', customerPhone:c.phone||'', customerEmail:c.email||'', customerAddress:c.address||'', items, subtotal:calculateReceiptTotal(), discountAmt:0, taxAmt:0, taxPercent:0, grandTotal:calculateReceiptTotal(), paymentMethod:document.getElementById('rc-method').value, notes:document.getElementById('rc-notes').value, sourceInvoiceId:document.getElementById('rc-source-invoice').value||''};
+            if (id) receipts[receipts.findIndex(r=>r.id===id)] = data;
+            else { receipts.push(data); setStore(STORAGE_KEYS.RC_SEQ, getStore(STORAGE_KEYS.RC_SEQ,1)+1); }
+            setStore(STORAGE_KEYS.RECEIPTS, receipts);
+            closeReceiptModal(); renderReceipts(); showToast(id ? 'Receipt updated successfully' : 'Receipt saved successfully');
+        }
+
+        function convertInvoiceToReceipt(invoiceId) {
+            const invoices = getStore(STORAGE_KEYS.INVOICES, []);
+            const inv = invoices.find(i=>i.id===invoiceId); if (!inv) return;
+            const existing = getStore(STORAGE_KEYS.RECEIPTS, []).find(r=>r.sourceInvoiceId===invoiceId);
+            if (existing) { showToast(`Receipt ${existing.number} already exists for this invoice.`, 'info'); switchTab('receipts'); return; }
+            openReceiptModal(null, inv);
+        }
+
+        function confirmDeleteReceipt(id) {
+            showConfirm('Delete Receipt','Are you sure you want to delete this receipt?',()=>{ setStore(STORAGE_KEYS.RECEIPTS, getStore(STORAGE_KEYS.RECEIPTS,[]).filter(r=>r.id!==id)); renderReceipts(); showToast('Receipt deleted'); });
+        }
+
+        function renderReceipts() {
+            const container = document.getElementById('receipts-container'); if (!container) return;
+            const search = (document.getElementById('search-receipts')?.value||'').toLowerCase();
+            const receipts = getStore(STORAGE_KEYS.RECEIPTS, []).filter(r => (r.number||'').toLowerCase().includes(search) || (r.customerName||'').toLowerCase().includes(search)).sort((a,b)=>(parseInt((b.number||'').replace(/\D/g,''))||0)-(parseInt((a.number||'').replace(/\D/g,''))||0));
+            if (!receipts.length) { container.innerHTML = `<div class="p-12 text-center space-y-4"><div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mx-auto"><i class="fa-solid fa-receipt"></i></div><h3 class="font-bold text-slate-900 text-lg">No receipts yet</h3><p class="text-sm text-slate-500">Create a receipt directly, or convert a paid invoice.</p><button onclick="openReceiptModal()" class="bg-brand-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold"><i class="fa-solid fa-plus"></i> Create Receipt</button></div>`; return; }
+            const rows = receipts.map(r=>`<tr class="hover:bg-slate-50"><td class="p-4 font-bold">${r.number}</td><td class="p-4">${r.customerName}</td><td class="p-4 text-slate-500">${formatDate(r.date)}</td><td class="p-4 font-bold">${formatRM(r.grandTotal)}</td><td class="p-4 text-slate-500">${r.paymentMethod||''}</td><td class="p-4 text-right"><button onclick="previewDocument('receipt','${r.id}')" class="p-2 text-slate-400 hover:text-brand-600"><i class="fa-solid fa-eye"></i></button><button onclick="openReceiptModal('${r.id}')" class="p-2 text-slate-400 hover:text-brand-600"><i class="fa-solid fa-pen"></i></button><button onclick="confirmDeleteReceipt('${r.id}')" class="p-2 text-slate-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('');
+            const cards = receipts.map(r=>`<div class="p-4 border-b border-slate-100"><div class="flex justify-between"><div><div class="font-bold">${r.number}</div><div class="text-sm text-slate-600">${r.customerName}</div></div><div class="font-bold">${formatRM(r.grandTotal)}</div></div><div class="text-xs text-slate-500 mt-2">${formatDate(r.date)} • ${r.paymentMethod||''}</div><div class="flex justify-end gap-1 mt-3 pt-3 border-t"><button onclick="previewDocument('receipt','${r.id}')" class="w-9 h-9 bg-slate-50 rounded-lg"><i class="fa-solid fa-eye"></i></button><button onclick="openReceiptModal('${r.id}')" class="w-9 h-9 bg-slate-50 rounded-lg"><i class="fa-solid fa-pen"></i></button><button onclick="confirmDeleteReceipt('${r.id}')" class="w-9 h-9 bg-slate-50 rounded-lg text-red-500"><i class="fa-solid fa-trash"></i></button></div></div>`).join('');
+            container.innerHTML = `<div class="md:hidden">${cards}</div><div class="hidden md:block overflow-x-auto"><table class="w-full text-left"><thead><tr class="bg-slate-50 text-slate-400 text-xs uppercase"><th class="p-4">Number</th><th class="p-4">Customer</th><th class="p-4">Date</th><th class="p-4">Amount</th><th class="p-4">Payment</th><th class="p-4 text-right">Actions</th></tr></thead><tbody class="divide-y">${rows}</tbody></table></div>`;
+        }
+
         // --- DASHBOARD RENDERING ---
         function renderDashboard() {
             const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
@@ -2528,9 +2696,12 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             if (type === 'quotation') {
                 const quotations = getStore(STORAGE_KEYS.QUOTATIONS, []);
                 docData = quotations.find(x => x.id === id);
-            } else {
+            } else if (type === 'invoice') {
                 const invoices = getStore(STORAGE_KEYS.INVOICES, []);
                 docData = invoices.find(x => x.id === id);
+            } else {
+                const receipts = getStore(STORAGE_KEYS.RECEIPTS, []);
+                docData = receipts.find(x => x.id === id);
             }
 
             if (!docData) return;
@@ -2543,7 +2714,8 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             const container = document.getElementById('printable-document-content');
 
             const isQt = type === 'quotation';
-            const docTitle = isQt ? 'QUOTATION' : 'INVOICE';
+            const isReceipt = type === 'receipt';
+            const docTitle = isQt ? 'QUOTATION' : (isReceipt ? 'RECEIPT' : 'INVOICE');
 
             container.innerHTML = `
                 <div>
@@ -2566,7 +2738,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
                             <div class="mt-4 text-xs space-y-1 text-slate-600">
                                 <p><span class="font-bold text-slate-900">${docTitle} No:</span> ${docData.number}</p>
                                 <p><span class="font-bold text-slate-900">Date:</span> ${formatDate(docData.date)}</p>
-                                <p><span class="font-bold text-slate-900">${isQt ? 'Valid Until' : 'Due Date'}:</span> ${formatDate(isQt ? docData.validUntil : docData.dueDate)}</p>
+                                <p><span class="font-bold text-slate-900">${isQt ? 'Valid Until' : (isReceipt ? 'Payment Method' : 'Due Date')}:</span> ${isReceipt ? (docData.paymentMethod || '-') : formatDate(isQt ? docData.validUntil : docData.dueDate)}</p>
                             </div>
                         </div>
                     </div>
@@ -2581,7 +2753,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
                             <p class="text-slate-600 text-xs mt-1 whitespace-pre-line">${docData.customerAddress}</p>
                         </div>
                         <div class="text-right flex flex-col justify-end">
-                            ${!isQt ? `<p class="text-xs font-bold text-slate-500">Status: <span class="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-800">${docData.status}</span></p>` : ''}
+                            ${(!isQt && !isReceipt) ? `<p class="text-xs font-bold text-slate-500">Status: <span class="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-800">${docData.status}</span></p>` : (isReceipt ? `<p class="text-xs font-bold text-emerald-700">PAYMENT RECEIVED</p>` : '')}
                         </div>
                     </div>
 
@@ -2631,7 +2803,7 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
                                 </div>
                             ` : ''}
                             <div class="flex justify-between py-3 bg-brand-600 text-white px-4 rounded-xl font-bold text-sm shadow-md">
-                                <span>Grand Total</span>
+                                <span>${isReceipt ? 'Amount Paid' : 'Grand Total'}</span>
                                 <span>${formatRM(docData.grandTotal)}</span>
                             </div>
                         </div>

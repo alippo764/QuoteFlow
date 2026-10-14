@@ -47,6 +47,23 @@
             justify-content: center;
             align-items: flex-start;
         }
+        /* Desktop-only: keep the complete A4 page visible inside the preview window. */
+        @media (min-width: 768px) {
+            /* Fit the entire A4 page in the desktop preview for quotations, invoices and receipts. */
+            #document-preview-modal > div {
+                height: 95vh;
+                max-height: 95vh;
+                overflow: hidden;
+            }
+            #print-preview-viewport {
+                flex: 1 1 0;
+                min-height: 0;
+                height: 0;
+                max-height: none;
+                overflow: hidden;
+                padding: 12px;
+            }
+        }
         .print-preview-scaler {
             position: relative;
             flex: 0 0 auto;
@@ -2955,7 +2972,15 @@ ${['Draft','Sent','Accepted','Rejected','Expired'].map(status => `<option value=
             const availableWidth = viewport.clientWidth
                 - parseFloat(viewportStyle.paddingLeft || 0)
                 - parseFloat(viewportStyle.paddingRight || 0);
-            const scale = Math.min(1, availableWidth / naturalWidth);
+            let scale = Math.min(1, availableWidth / naturalWidth);
+            // On desktop, scale by available width and height so the full A4 page is visible.
+            // This shared preview function applies to quotations, invoices and receipts. Mobile behavior stays unchanged.
+            if (window.matchMedia('(min-width: 768px)').matches) {
+                const availableHeight = Math.max(0, viewport.clientHeight
+                    - parseFloat(viewportStyle.paddingTop || 0)
+                    - parseFloat(viewportStyle.paddingBottom || 0));
+                if (availableHeight > 0) scale = Math.min(scale, availableHeight / naturalHeight);
+            }
 
             doc.style.transform = `scale(${scale})`;
             scaler.style.width = `${naturalWidth * scale}px`;
